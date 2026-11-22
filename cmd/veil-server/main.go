@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"crypto/sha256"
 	"strconv"
+	"strings"
 	"sync"
 	"crypto/tls"
 	"flag"
@@ -42,21 +43,36 @@ func main() {
 		NextProtos:   []string{"http/1.1"},
 		MinVersion:   tls.VersionTLS12,
 	}
-	ln, err := tls.Listen("tcp", *addr, cfg)
-	if err != nil {
-		log.Fatalf("veil-server: listen: %v", err)
-	}
-	log.Printf("veil-server: listening on %s, fallback %s", *addr, *fallback)
-
 	rp := proto.NewReplayCache(10 * time.Minute)
-	for {
-		c, err := ln.Accept()
-		if err != nil {
-			log.Printf("accept: %v", err)
+
+	// список адресов через запятую: ТСПУ блокирует отдельные порты по волнам,
+	// поэтому один и тот же сервис слушает несколько (:443,:8443,:2083,:9443)
+	var wg sync.WaitGroup
+	for _, a := range strings.Split(*addr, ",") {
+		a = strings.TrimSpace(a)
+		if a == "" {
 			continue
 		}
-		go handle(c, key, rp, *fallback)
+		ln, err := tls.Listen("tcp", a, cfg)
+		if err != nil {
+			log.Printf("veil-server: listen %s: %v (пропускаю порт)", a, err)
+			continue
+		}
+		log.Printf("veil-server: listening on %s, fallback %s", a, *fallback)
+		wg.Add(1)
+		go func(ln net.Listener) {
+			defer wg.Done()
+			for {
+				c, aerr := ln.Accept()
+				if aerr != nil {
+					log.Printf("accept %s: %v", ln.Addr(), aerr)
+					return
+				}
+				go handle(c, key, rp, *fallback)
+			}
+		}(ln)
 	}
+	wg.Wait()
 }
 
 func handle(c net.Conn, key []byte, rp *proto.ReplayCache, fallback string) {

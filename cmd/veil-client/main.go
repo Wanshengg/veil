@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	utls "github.com/refraction-networking/utls"
@@ -39,7 +40,9 @@ type cfg struct {
 	rules       *rules.Rules
 	tunMTU      int
 	serverIPPin string
-	directIP    net.IP // адрес физического интерфейса для «прямых» соединений
+	directIP    net.IP
+	candidates  []string // host:port, перебираем при блокировке порта
+	portIdx     int32    // индекс последнего рабочего порта (atomic) // адрес физического интерфейса для «прямых» соединений
 
 	mu   sync.Mutex
 	good string
@@ -118,6 +121,7 @@ func main() {
 	tun := flag.Bool("tun", false, "route ALL system traffic through the tunnel (needs admin, wintun.dll)")
 	tunMTU := flag.Int("tun-mtu", 1400, "MTU of the TUN adapter (lower if the tunnel stalls)")
 	serverIP := flag.String("server-ip", "", "pin server IP, skip DNS (needed if another VPN hijacks DNS)")
+	portList := flag.String("ports", "443,8443,2083,9443", "ports to try on the same host when one is blocked (comma separated)")
 	flag.Parse()
 	applyConfig(*cfgPath)
 
@@ -160,6 +164,10 @@ func main() {
 	ruN := 0
 	if geoDB != nil {
 		ruN = geoDB.Len()
+	}
+	c.candidates = buildCandidates(c.server, *portList)
+	if len(c.candidates) > 1 {
+		log.Printf("veil-client: порты для перебора: %v", c.candidates)
 	}
 	log.Printf("veil-client: SOCKS5/4 on %s -> %s (sni=%s fp=%s direct=%v, ru-prefixes=%d)",
 		*socksAddr, *server, sniName, *fp, *direct, ruN)
@@ -267,6 +275,55 @@ func helloID(name string) (utls.ClientHelloID, error) {
 	return utls.ClientHelloID{}, fmt.Errorf("unknown fingerprint %q", name)
 }
 
+// buildCandidates — список host:port: сконфигурированный порт первым, дальше
+// запасные из -ports (ТСПУ блокирует порты по волнам, а не только адрес).
+func buildCandidates(server, ports string) []string {
+	host, _, err := net.SplitHostPort(server)
+	if err != nil {
+		return []string{server}
+	}
+	seen := map[string]bool{}
+	var out []string
+	add := func(s string) {
+		if s == "" || seen[s] {
+			return
+		}
+		seen[s] = true
+		out = append(out, s)
+	}
+	add(server)
+	for _, p := range strings.Split(ports, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			add(net.JoinHostPort(host, p))
+		}
+	}
+	return out
+}
+
+// dialAny пробует кандидатов по кругу, начиная с последнего рабочего порта.
+func dialAny(c *cfg, fp string, maxVer uint16) (*utls.UConn, error) {
+	if len(c.candidates) == 0 {
+		return dialTunnel(c, c.server, fp, maxVer)
+	}
+	var err error
+	start := int(atomic.LoadInt32(&c.portIdx))
+	for i := 0; i < len(c.candidates); i++ {
+		idx := (start + i) % len(c.candidates)
+		uc, derr := dialTunnel(c, c.candidates[idx], fp, maxVer)
+		if derr == nil {
+			if idx != start {
+				log.Printf("порт %s не прошёл, работаю через %s", c.candidates[start], c.candidates[idx])
+			}
+			atomic.StoreInt32(&c.portIdx, int32(idx))
+			c.server = c.candidates[idx]
+			return uc, nil
+		}
+		err = derr
+		log.Printf("порт %s: %v", c.candidates[idx], derr)
+	}
+	return nil, err
+}
+
 func dialTunnel(c *cfg, addr, fp string, maxVer uint16) (*utls.UConn, error) {
 	id, err := helloID(fp)
 	if err != nil {
@@ -302,7 +359,7 @@ func openTunnel(c *cfg, target string) (*utls.UConn, []byte, []byte, string, err
 	// second pass forces 1.2 for every fingerprint.
 	for _, maxVer := range []uint16{0, utls.VersionTLS12} {
 		for _, fp := range c.order() {
-			uc, err := dialTunnel(c, c.server, fp, maxVer)
+			uc, err := dialAny(c, fp, maxVer)
 			if err != nil {
 				c.penalize(fp)
 				last = err
