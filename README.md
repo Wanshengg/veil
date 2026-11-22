@@ -1,0 +1,87 @@
+# veil — экспериментальный туннель «под TLS-сайт»
+
+Свой протокол на 5 пользователей, задача — измерить, сколько он проживёт под ТСПУ.
+Клиентский софт не пишется: `veil-client` поднимает локальный SOCKS5, поэтому
+подходит любой браузер/приложение.
+
+## Что внутри
+
+```
+TLS 1.3 (реальный сертификат, ClientHello Chrome через utls)
+ └─ [VEIL][ver][ts:8][salt:16]        ← 29 байт заголовка
+     └─ AEAD-кадры: len(4) | nonce(24) | XChaCha20-Poly1305(2-byte payload len | payload | random pad 0..16)
+```
+
+- Ключи: HKDF-SHA256(PSK, salt) → отдельные ключи в каждую сторону, salt в открытом виде.
+- Защита от replay: salt в LRU на 10 минут, окно timestamp ±120 с.
+- Первое, что видит DPI: обычный TLS 1.3 ClientHello Chrome (JA3 ALPN `h2,http/1.1`).
+- Fallback: всё, что не начинается с `VEIL`, прозрачно уезжает на реальный сайт
+  (`-fallback`), включая уже прочитанные байты. Активное зондирование видит живой HTTPS-сайт.
+
+## Что проверено (реальные прогоны, не «должно работать»)
+
+| Проверка | Результат |
+|---|---|
+| HTTP через туннель (SOCKS5) | ok |
+| Обычный HTTPS-клиент на :8443 видит fallback-сайт | ok |
+| Сырой мусор на :8443 (не TLS) | отдаётся fallback-страница |
+| 1 MiB через туннель | sha256 совпал побайтно |
+| Внешний интернет через туннель | ok (`example.com`) |
+| Набор TLS-шифров/кривых/ALPN vs реальный Chrome 145 | совпал полностью |
+| Отпечаток | `t13d1516h2`, у Chrome 145 — `t13d1517h2`: не хватает одного расширения (`51764`), utls 1.8.2 соответствует Chrome 133 |
+
+Перепроверить: `bash scripts/test_local.sh` и `python tools/ja3check.py chrome`.
+
+## Чего пока нет
+
+- SNI/ASN-консистентности: сертификат должен быть на ваш домен, домен — на ваш IP.
+  `-sni` у клиента обязан совпадать с CN/SAN сертификата.
+- HTTP/2 в fallback: сервер отдаёт `http/1.1` (как nginx без h2); ClientHello при этом
+  рекламирует `h2` — это норма для nginx-конфига, но не идеал.
+- UDP (QUIC, звонки) — только TCP.
+- Мультиплексирования нет: одно SOCKS-соединение = одно TLS-соединение (для 5 человек ок).
+- Настоящего замера под ТСПУ ещё не было.
+
+## Сборка
+
+```bash
+go build -o bin/veil-server ./cmd/veil-server
+go build -o bin/veil-client ./cmd/veil-client
+go build -o bin/gencert     ./cmd/gencert        # только для локальных тестов
+```
+
+## Сервер (VPS)
+
+```bash
+# 1. реальный сертификат на домен, указывающий на этот IP
+certbot certonly --standalone -d veil.example.com
+# 2. nginx (или любой сайт) на 127.0.0.1:8080 — то, что увидит зонд
+# 3. запуск
+./veil-server -addr :443 \
+  -cert /etc/letsencrypt/live/veil.example.com/fullchain.pem \
+  -key  /etc/letsencrypt/live/veil.example.com/privkey.pem \
+  -psk  'длинная-случайная-строка' \
+  -fallback 127.0.0.1:8080
+```
+
+Автоустановка: `deploy/install.sh` (systemd, отдельный юзер, CAP_NET_BIND_SERVICE).
+
+## Клиент
+
+```bash
+./veil-client -socks 127.0.0.1:1080 -server veil.example.com:443 \
+  -sni veil.example.com -psk 'та-же-строка' -fp chrome
+```
+
+Дальше SOCKS5 `127.0.0.1:1080` в браузере или в любом приложении.
+`-insecure` — только для самоподписанных тестов.
+
+## Замер выживаемости
+
+```bash
+python tools/probe.py -server veil.example.com:443 -sni veil.example.com \
+  -psk '...' -interval 300 -log probe.jsonl
+```
+
+Каждые 5 минут: TLS-доступность порта, запрос через туннель, задержка, объём.
+По JSONL считается время до первого сбоя — это и есть «сколько прожил».
