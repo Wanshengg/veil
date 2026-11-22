@@ -565,19 +565,104 @@ namespace Veil
         }
     }
 
+
+    /* ── приложения: запуск через прокси ────────────────────────────────── */
+
+    class AppEntry
+    {
+        public string Name = "", Path = "";
+        public bool On = true;
+    }
+
+    static class Apps
+    {
+        static string File2 { get { return System.IO.Path.Combine(Engine.Dir, "apps.json"); } }
+
+        public static List<AppEntry> Load()
+        {
+            List<AppEntry> list = new List<AppEntry>();
+            try
+            {
+                if (!File.Exists(File2)) return list;
+                string raw = File.ReadAllText(File2);
+                foreach (string chunk in raw.Split(new[] { "\n" }, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    string[] f = chunk.Split('\t');
+                    if (f.Length < 3) continue;
+                    AppEntry a = new AppEntry();
+                    a.Name = f[0]; a.Path = f[1]; a.On = f[2] == "1";
+                    list.Add(a);
+                }
+            }
+            catch { }
+            return list;
+        }
+
+        public static void Save(List<AppEntry> list)
+        {
+            StringBuilder sb = new StringBuilder();
+            foreach (AppEntry a in list)
+                sb.Append(a.Name).Append('\t').Append(a.Path).Append('\t').Append(a.On ? "1" : "0").Append('\n');
+            File.WriteAllText(File2, sb.ToString(), new UTF8Encoding(false));
+        }
+
+        static readonly string[] Chromium = { "chrome", "msedge", "brave", "opera", "vivaldi", "yandex", "browser" };
+
+        public static string Launch(AppEntry a)
+        {
+            string exe = System.IO.Path.GetFileNameWithoutExtension(a.Path).ToLowerInvariant();
+            ProcessStartInfo psi = new ProcessStartInfo(a.Path);
+            if (!a.On) { Process.Start(psi); return exe + " (без туннеля)"; }
+            bool chromium = Array.IndexOf(Chromium, exe) >= 0;
+
+            if (chromium)
+            {
+                psi.Arguments = "--proxy-server=\"http://127.0.0.1:8081\" --proxy-bypass-list=\"<local>\"";
+            }
+            else if (exe == "firefox")
+            {
+                string prof = System.IO.Path.Combine(Engine.Dir, "ffprofile");
+                Directory.CreateDirectory(prof);
+                File.WriteAllText(System.IO.Path.Combine(prof, "prefs.js"),
+                    "user_pref(\"network.proxy.type\", 1);\n" +
+                    "user_pref(\"network.proxy.http\", \"127.0.0.1\");\n" +
+                    "user_pref(\"network.proxy.http_port\", 8081);\n" +
+                    "user_pref(\"network.proxy.ssl\", \"127.0.0.1\");\n" +
+                    "user_pref(\"network.proxy.ssl_port\", 8081);\n" +
+                    "user_pref(\"network.proxy.allow_hijacking_localhost\", true);\n");
+                psi.Arguments = "-profile \"" + prof + "\" -no-remote";
+            }
+            else
+            {
+                psi.EnvironmentVariables["HTTP_PROXY"] = "http://127.0.0.1:8081";
+                psi.EnvironmentVariables["HTTPS_PROXY"] = "http://127.0.0.1:8081";
+                psi.EnvironmentVariables["ALL_PROXY"] = "socks5://127.0.0.1:1080";
+                psi.EnvironmentVariables["NO_PROXY"] = "localhost,127.0.0.1";
+            }
+            psi.UseShellExecute = false;
+            Process.Start(psi);
+            return exe;
+        }
+    }
+
     class Shell : Form
     {
         readonly Core core = new Core();
+        readonly List<AppEntry> apps = Apps.Load();
         WebView2 web;
         readonly System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer();
         bool ready;
 
         readonly bool autoConnect;
+        readonly string openTab = "";
 
         public Shell(string[] args)
         {
             foreach (string a in args)
+            {
                 if (string.Equals(a, "--connect", StringComparison.OrdinalIgnoreCase)) autoConnect = true;
+                if (a.StartsWith("--tab=", StringComparison.OrdinalIgnoreCase)) openTab = a.Substring(6);
+            }
             Text = "veil";
             ClientSize = new Size(484, 700);
             MinimumSize = new Size(420, 620);
@@ -624,6 +709,9 @@ namespace Veil
                             string probe = await web.CoreWebView2.ExecuteScriptAsync(
                                 "JSON.stringify({ui:!!window.VEIL_UI,wv:!!(window.chrome&&window.chrome.webview),err:window.__veilErr||null,view:document.getElementById('view').innerHTML.length})");
                             Program.Log("page probe: " + probe);
+                            if (openTab.Length > 0)
+                                await web.CoreWebView2.ExecuteScriptAsync(
+                                    "document.querySelector('.tab[data-tab=" + openTab + "]').click()");
                         }
                         catch (Exception ex) { Program.Log("probe fail: " + ex.Message); }
                     };
@@ -692,6 +780,55 @@ namespace Veil
                 if (core.State == "connected") { core.Kill(); ThreadPool.QueueUserWorkItem(delegate { core.OpenTunnel(); BeginInvoke(new MethodInvoker(Push)); }); }
             }
             else if (cmd == "fav") { }
+            else if (cmd == "app-add")
+            {
+                using (OpenFileDialog dlg = new OpenFileDialog())
+                {
+                    dlg.Title = "Выбери приложение";
+                    dlg.Filter = "Программы (*.exe)|*.exe";
+                    if (dlg.ShowDialog(this) == DialogResult.OK)
+                    {
+                        string path = dlg.FileName;
+                        bool dup = false;
+                        foreach (AppEntry a in apps) if (a.Path == path) dup = true;
+                        if (!dup)
+                        {
+                            AppEntry ent = new AppEntry();
+                            ent.Name = Path.GetFileNameWithoutExtension(path);
+                            ent.Path = path;
+                            ent.On = true;
+                            apps.Add(ent);
+                            Apps.Save(apps);
+                        }
+                    }
+                }
+            }
+            else if (cmd == "app-toggle")
+            {
+                string path = Json(raw, "path");
+                foreach (AppEntry a in apps) if (a.Path == path) a.On = !a.On;
+                Apps.Save(apps);
+            }
+            else if (cmd == "app-del")
+            {
+                string path = Json(raw, "path");
+                apps.RemoveAll(delegate(AppEntry a) { return a.Path == path; });
+                Apps.Save(apps);
+            }
+            else if (cmd == "app-run")
+            {
+                string path = Json(raw, "path");
+                foreach (AppEntry a in apps)
+                {
+                    if (a.Path != path) continue;
+                    try
+                    {
+                        string kind = Apps.Launch(a);
+                        Program.Log("launch: " + a.Name + " via proxy (" + kind + ")");
+                    }
+                    catch (Exception ex) { Program.Log("launch failed: " + ex.Message); }
+                }
+            }
             else if (cmd == "setting")
             {
                 string k = Json(raw, "key"), v = Json(raw, "value") ?? "";
@@ -765,6 +902,15 @@ namespace Veil
             }
             sb.Append("]");
             sb.Append(",\"seriesUnit\":\"ms\"");
+            sb.Append(",\"apps\":[");
+            for (int i = 0; i < apps.Count; i++)
+            {
+                if (i > 0) sb.Append(',');
+                sb.Append("{\"name\":\"").Append(Esc(apps[i].Name)).Append("\"")
+                  .Append(",\"path\":\"").Append(Esc(apps[i].Path)).Append("\"")
+                  .Append(",\"on\":").Append(apps[i].On ? "true" : "false").Append("}");
+            }
+            sb.Append("]");
             sb.Append(",\"error\":\"").Append(Esc(core.State == "error" ? "Клиент не поднялся, смотри лог" : "")).Append("\"");
             sb.Append("}}");
             return sb.ToString();

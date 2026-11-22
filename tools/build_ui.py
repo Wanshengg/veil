@@ -38,6 +38,10 @@ BRIDGE = """
     toggleFav: (id) => post({ cmd: "fav", id }),
     setSetting: (k, v) => post({ cmd: "setting", key: k, value: String(v) }),
     refresh: () => post({ cmd: "refresh" }),
+    appAdd: () => post({ cmd: "app-add" }),
+    appToggle: (path) => post({ cmd: "app-toggle", path }),
+    appRun: (path) => post({ cmd: "app-run", path }),
+    appDel: (path) => post({ cmd: "app-del", path }),
   };
   if (window.VEIL_UI) window.VEIL_UI.setAdapter(host);
 })();

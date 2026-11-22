@@ -64,6 +64,10 @@
         theme: "dark",
       },
       series: Array.from({ length: 40 }, (_, i) => 26 + Math.round(16 * Math.sin(i / 3.1) + 9 * Math.sin(i / 1.3) + (i % 5))),
+      apps: [
+        { name: "Google Chrome", path: "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe", on: true },
+        { name: "Telegram", path: "C:\\Users\\me\\AppData\\Roaming\\Telegram Desktop\\Telegram.exe", on: true },
+      ],
       error: "",
     };
 
@@ -98,6 +102,10 @@
       toggleFav(id) { const s = servers.find((x) => x.id === id); if (s) s.fav = !s.fav; emit(); },
       setSetting(key, value) { snap.settings[key] = value; emit(); },
       serverList() { return structuredClone(servers); },
+      appAdd() { snap.apps.push({ name: "Новое приложение", path: "C:\\demo\\app.exe", on: true }); emit(); },
+      appToggle(path) { const a = snap.apps.find((x) => x.path === path); if (a) a.on = !a.on; emit(); },
+      appRun(name) { alert("В макете приложение «" + name + "» запускается через прокси"); },
+      appDel(path) { snap.apps = snap.apps.filter((x) => x.path !== path); emit(); },
       refresh() { emit(); },
     };
     return api;
@@ -397,6 +405,52 @@
       </section>`;
     },
 
+    apps(snap) {
+      const list = snap.apps || [];
+      return `
+      <section style="display:grid;gap:var(--s-4)">
+        <div class="card" style="display:grid;gap:var(--s-3)">
+          <div>
+            <div class="caps">Выборочный режим</div>
+            <div class="title" style="margin-top:2px">Только выбранные приложения</div>
+            <div class="faint" style="font-size:var(--fs-13);margin-top:4px">
+              Приложение запускается с нашим прокси — остальная система остаётся в обычной сети.
+              Работает для браузеров, Telegram и программ, которые уважают прокси.
+            </div>
+          </div>
+          <button class="btn primary" data-action="app-add">＋ Добавить приложение</button>
+        </div>
+
+        ${list.length === 0
+          ? comp.empty("Список пуст", "Добавь .exe — и запускай его через туннель, не заворачивая всю систему.", `<button class="btn" data-action="app-add">Выбрать .exe</button>`)
+          : `<div class="list">
+              ${list.map((a) => `
+                <div class="row" style="min-height:68px">
+                  <span class="flag" aria-hidden="true">${esc((a.name || "?").slice(0, 2).toUpperCase())}</span>
+                  <span class="main">
+                    <span class="name">${esc(a.name)}</span>
+                    <span class="sub">${esc(a.path)}</span>
+                  </span>
+                  <span class="side">
+                    ${comp.toggle(a.on, "app-toggle", "Через туннель: " + a.name)}
+                    <button class="btn ghost" style="min-height:38px" data-action="app-run" data-path="${esc(a.path)}" data-name="${esc(a.name)}">Запустить</button>
+                    <button class="star" data-app-del="${esc(a.path)}" aria-label="Удалить ${esc(a.name)}">×</button>
+                  </span>
+                </div>`).join("")}
+            </div>`}
+
+        <div class="card" style="border-color:var(--border)">
+          <div class="caps">Как это работает</div>
+          <div class="faint" style="font-size:var(--fs-13);line-height:1.6;margin-top:6px">
+            Chrome, Edge, Яндекс — получают флаг <code>--proxy-server</code>;<br>
+            Firefox — отдельный профиль с настройками прокси;<br>
+            остальные — переменные <code>HTTP_PROXY</code>/<code>HTTPS_PROXY</code>/<code>ALL_PROXY</code>.<br>
+            Игры и программы без поддержки прокси так не завернуть — для них нужен TUN-режим.
+          </div>
+        </div>
+      </section>`;
+    },
+
     settings(snap) {
       const s = snap.settings;
       const row = (title, sub, control) => `
@@ -465,6 +519,7 @@
     if (state.tab === "home") view.innerHTML = views.home(snap, servers);
     else if (state.tab === "servers") view.innerHTML = views.servers(snap, servers);
     else if (state.tab === "plan") view.innerHTML = views.plan(snap);
+    else if (state.tab === "apps") view.innerHTML = views.apps(snap);
     else view.innerHTML = views.settings(snap);
 
     document.querySelectorAll(".tab").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.tab === state.tab)));
@@ -490,6 +545,17 @@
       render(); return;
     }
 
+    const appDel = e.target.closest("[data-app-del]");
+    if (appDel) { e.stopPropagation(); adapter.appDel(appDel.dataset.appDel); return; }
+
+    const appToggle = e.target.closest('[data-action="app-toggle"]');
+    if (appToggle) {
+      const row = appToggle.closest(".row");
+      const path = row && row.querySelector(".sub") ? row.querySelector(".sub").textContent : "";
+      adapter.appToggle(path);
+      return;
+    }
+
     const fav = e.target.closest("[data-fav]");
     if (fav) { e.stopPropagation(); adapter.toggleFav(fav.dataset.fav); return; }
 
@@ -513,6 +579,8 @@
     else if (a === "set-autostart") adapter.setSetting("autostart", !snap.settings.autostart);
     else if (a === "set-split") adapter.setSetting("split", !snap.settings.split);
     else if (a === "renew") toast("Переходим к оплате…", "ok");
+    else if (a === "app-add") adapter.appAdd();
+    else if (a === "app-run") adapter.appRun(action.dataset.path);
     else if (a === "sheet-rules") openSheet("Исключения маршрутизации", rulesSheet());
     else if (a === "sheet-logs") openSheet("Логи клиента", logsSheet());
     else if (a === "toast") toast(action.dataset.msg || "Готово", "ok");

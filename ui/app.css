@@ -555,7 +555,7 @@ body[data-overlay] .sheet { transform: translate(-50%, 0); }
 /* ── табы ──────────────────────────────────────────────────────────────── */
 .tabs {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: var(--s-1);
   padding: var(--s-2) var(--s-2) calc(var(--s-2) + env(safe-area-inset-bottom));
   border-top: 1px solid var(--border);
@@ -589,7 +589,7 @@ body[data-overlay] .sheet { transform: translate(-50%, 0); }
   .view { padding-bottom: var(--s-5); }
   .tabs {
     order: 1;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     border: 1px solid var(--border);
     border-radius: var(--r-16);
     margin-bottom: var(--s-2);
