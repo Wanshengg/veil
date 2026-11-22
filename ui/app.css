@@ -552,11 +552,9 @@ body[data-overlay] .sheet { transform: translate(-50%, 0); }
   grid-auto-flow: column;
   grid-auto-columns: 1fr;
   gap: 2px;
-  padding: var(--s-2) var(--s-3) calc(var(--s-2) + env(safe-area-inset-bottom));
-  border-top: 1px solid var(--border);
-  background: color-mix(in srgb, var(--bg) 82%, transparent);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  padding: var(--s-2) 0 calc(var(--s-3) + env(safe-area-inset-bottom));
+  background: transparent;
+  border: 0;
 }
 .tab {
   min-width: 0;
@@ -578,7 +576,8 @@ body[data-overlay] .sheet { transform: translate(-50%, 0); }
 }
 .tab:hover { background: var(--layer-hover); }
 .tab svg { width: 19px; height: 19px; opacity: 0.9; }
-.tab[aria-selected="true"] { color: var(--text); background: var(--layer-2); box-shadow: 0 0 0 1px var(--border) inset; }
+.tab[aria-selected="true"] { color: var(--text); background: transparent; }
+.tab[aria-selected="true"] svg { color: var(--accent); }
 .tab[aria-selected="true"] svg { color: var(--accent); }
 
 /* ── десктоп ───────────────────────────────────────────────────────────── */
