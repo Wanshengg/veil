@@ -3,3 +3,6 @@ dist/
 certs/
 testroot/
 *.jsonl
+probe.out
+*.out
+*.log

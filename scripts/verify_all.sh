@@ -3,7 +3,9 @@
 set -u
 cd "$(dirname "$0")/.."
 HOST=se.example.com
-PSK='REDACTED-PSK'
+# ключ берём из окружения или из конфига приложения, в репозитории его нет
+PSK="${VEIL_PSK:-$(grep -oE '^psk[[:space:]]*=[[:space:]]*.*' "$LOCALAPPDATA/veil/veil.ini" 2>/dev/null | cut -d= -f2 | tr -d ' \r')}"
+if [ -z "$PSK" ]; then echo "VEIL_PSK не задан и не найден в veil.ini"; exit 1; fi
 
 echo "== 1. DNS =="
 python -c "import socket;print(socket.gethostbyname('$HOST'))" 2>&1
