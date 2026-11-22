@@ -57,7 +57,7 @@ html = re.sub(r'<link rel="stylesheet" href="tokens\.css[^"]*">', lambda m: "<st
 html = re.sub(r'<link rel="stylesheet" href="app\.css[^"]*">', lambda m: "<style>\n" + css + "\n</style>", html)
 html = re.sub(r'<script src="app\.js[^"]*"></script>', lambda m: "<script>\n" + js + "\n</script>", html)
 
-html = html.replace("</body>", BRIDGE + "</body>")
+html = html.replace("</body>", "</body>")  # мост теперь в index.html
 
 # отдельная версия страницы для WebView2 (внешние css/js + мост)
 host = html.replace('href="tokens.css?v=3"', 'href="tokens.css"') \

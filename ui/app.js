@@ -13,7 +13,6 @@
 
   const state = {
     tab: "home",
-    theme: "dark",
     query: "",
     country: "all",
     onlyFav: false,
@@ -53,7 +52,6 @@
     const snap = {
       state: "disconnected", // disconnected | connecting | connected | error | no-internet
       serverId: "de-fra",
-      subscription: { active: true, plan: "Год · Про", until: "12.02.2027", usedGB: 34.8, totalGB: 200, devices: 2, deviceLimit: 5 },
       traffic: { up: 1.24, down: 8.6, uptime: 0 },
       settings: {
         protocol: "VLESS + Reality",
@@ -62,8 +60,7 @@
         autostart: false,
         tun: false,
         dns: "Через туннель",
-        theme: "dark",
-      },
+          },
       series: Array.from({ length: 40 }, (_, i) => 26 + Math.round(16 * Math.sin(i / 3.1) + 9 * Math.sin(i / 1.3) + (i % 5))),
       apps: [
         { name: "Google Chrome", path: "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe", on: true },
@@ -79,7 +76,6 @@
     const api = {
       subscribe(fn) { listeners.add(fn); fn(structuredClone(snap)); return () => listeners.delete(fn); },
       async connect() {
-        if (!snap.subscription.active) { snap.state = "error"; snap.error = "Подписка не активна"; return emit(); }
         snap.state = "connecting"; snap.error = ""; emit();
         await new Promise((r) => setTimeout(r, 1500));
         snap.state = "connected";
@@ -158,6 +154,22 @@
       </div>`;
     },
 
+    tile(s, active, connected) {
+      const load = s.load < 40 ? "свободен" : s.load < 70 ? "умеренно" : "загружен";
+      return `
+      <button class="tile" data-server="${s.id}" aria-pressed="${active}"
+              aria-label="${esc(s.country + " · " + s.city + " · " + s.ping + " мс" + (active && connected ? " · подключено" : ""))}">
+        <span class="tile-top">
+          <span class="flag" aria-hidden="true">${s.cc}</span>
+          ${active && connected ? `<span class="tile-live" aria-hidden="true"></span>` : comp.ping(s.ping)}
+        </span>
+        <span class="tile-name">${esc(s.country)}</span>
+        <span class="tile-sub">${esc(s.city)} · ${load}</span>
+        <span class="star tile-star" data-fav="${s.id}" role="button" aria-pressed="${s.fav}"
+              aria-label="В избранное: ${esc(s.country)}">${icon.star(s.fav)}</span>
+      </button>`;
+    },
+
     sparkline(series) {
       const w = 320, h = 68;
       if (!series || series.length < 2) series = [0, 0];
@@ -203,13 +215,12 @@
   /* ── экраны ──────────────────────────────────────────────────────────── */
   const views = {
     home(snap, servers) {
-      const server = servers.find((x) => x.id === snap.serverId) || servers[0];
+      const server = servers.find((x) => x.id === snap.serverId) || servers[0] || { country: "—", city: "—", cc: "--", ping: 0, load: 0 };
       const s = snap.state;
       const connected = s === "connected";
       const connecting = s === "connecting";
       const err = s === "error";
       const noNet = s === "no-internet";
-      const subBlocked = !snap.subscription.active;
 
       const stateTitle = connected ? "Защищено" : connecting ? "Подключаемся…" : err ? "Не удалось подключиться" : noNet ? "Нет интернета" : "Не защищено";
       const stateSub = connected
@@ -220,10 +231,14 @@
             ? esc(snap.error || "Сервер не ответил, попробуй другой")
             : noNet
               ? "Проверь подключение к сети — туннель поднять нельзя"
-              : "Один клик — и трафик зашифрован";
+              : "Нажми плитку сервера ниже или большую кнопку";
 
       const btnLabel = connected ? "Отключиться" : connecting ? "Отменяем…" : err ? "Повторить подключение" : "Подключиться";
-      const btnDisabled = connecting || noNet || subBlocked;
+      const btnDisabled = connecting || noNet;
+
+      const tiles = servers.length
+        ? servers.map((x) => comp.tile(x, x.id === snap.serverId, connected)).join("")
+        : comp.empty("Нет ключей", "Добавь ключ из буфера — сервер появится здесь.", `<button class="btn" data-action="add-key">＋ Добавить ключ</button>`);
 
       return `
       <section class="home">
@@ -247,207 +262,36 @@
 
           <div class="hero-actions">
             <button class="btn primary hero" data-action="toggle" ${btnDisabled ? "disabled" : ""}>${btnLabel}</button>
-            <button class="btn" data-action="go-servers">Сменить сервер</button>
           </div>
         </div>
 
-        <div class="side-col">
-        <div class="grid-2">
-          <div class="card flat">
-            <div class="caps">Пинг</div>
-            <div class="stat"><span class="value num">${server.ping}<span class="unit">ms</span></span></div>
-            <div class="faint" style="font-size:var(--fs-12)">${connected ? "стабильно" : "по последнему замеру"}</div>
-          </div>
-          <div class="card flat">
-            <div class="caps">Сессия</div>
-            <div class="stat"><span class="value num">${comp.fmtClock(snap.traffic.uptime)}</span></div>
-            <div class="faint" style="font-size:var(--fs-12)">${connected ? "соединение активно" : "не запущена"}</div>
-          </div>
-        </div>
+                  <div class="caps tiles-head">Серверы <span class="faint">· нажми плитку, чтобы подключиться</span></div>
+          <div class="tiles">${tiles}</div>
 
-        <div class="card" style="display:flex;align-items:center;gap:var(--s-3)">
-          <span class="flag" aria-hidden="true">${server.cc}</span>
-          <span class="main" style="display:grid;gap:2px;flex:1;min-width:0">
-            <span class="name" style="font-weight:var(--w-strong)">${esc(server.country)} · ${esc(server.city)}</span>
-            <span class="sub faint" style="font-size:var(--fs-12)">${connected ? "активный маршрут" : "по умолчанию"} · ${server.load}% загрузки</span>
-          </span>
-          <button class="btn ghost" style="min-height:38px" data-action="go-servers">Сменить</button>
-        </div>
-
-        <div class="card">
-          <div class="chart-wrap">
-            <div class="chart-head">
-              <span class="caps">${snap.seriesUnit === "ms" ? "Пинг за сессию" : "Скорость"}</span>
-              <span class="num muted" style="font-size:var(--fs-13)">${snap.seriesUnit === "ms"
-                ? (snap.series.length ? "сейчас " + snap.series[snap.series.length - 1] + " мс" : "нет данных")
-                : `${icon.arrowDown} ${comp.fmtGB(snap.traffic.down)} · ${icon.arrowUp} ${comp.fmtGB(snap.traffic.up)} МБ/с`}
-              </span>
+<div class="side-col">
+          <div class="grid-2">
+            <div class="card flat">
+              <div class="caps">Пинг</div>
+              <div class="stat"><span class="value num">${server.ping}<span class="unit">ms</span></span></div>
+              <div class="faint" style="font-size:var(--fs-12)">${connected ? "стабильно" : "по последнему замеру"}</div>
             </div>
-            ${comp.sparkline(snap.series.length > 1 ? snap.series : [0, 0])}
-          </div>
-        </div>
-
-        <div class="quick">
-          <button class="item ${snap.settings.split ? "on" : ""}" data-action="quick-split">
-            <span class="name">RU напрямую</span>
-            <span class="state">${snap.settings.split ? "включено" : "выключено"}</span>
-          </button>
-          <button class="item ${snap.settings.killSwitch ? "on" : ""}" data-action="quick-kill">
-            <span class="name">Kill switch</span>
-            <span class="state">${snap.settings.killSwitch ? "включён" : "выключен"}</span>
-          </button>
-          <button class="item ${snap.settings.autostart ? "on" : ""}" data-action="quick-autostart">
-            <span class="name">Автозапуск</span>
-            <span class="state">${snap.settings.autostart ? "включён" : "выключен"}</span>
-          </button>
-        </div>
-
-        </div>
-
-        ${subBlocked ? `<div class="card" style="border-color:var(--warn-soft)">
-          <div class="caps" style="color:var(--warn)">Подписка</div>
-          <div class="title">Срок действия истёк</div>
-          <div class="faint" style="margin:4px 0 12px">Туннель возобновится сразу после продления.</div>
-          <button class="btn primary" data-action="go-plan">Продлить</button>
-        </div>` : ""}
-      </section>`;
-    },
-
-    servers(snap, servers) {
-      if (state.loading) return `<div class="grid" style="display:grid;gap:var(--s-3)">${comp.skeletons(5)}</div>`;
-
-      const countries = [...new Map(servers.map((s) => [s.cc, s.country])).entries()];
-      let list = servers.filter((s) => {
-        const q = state.query.trim().toLowerCase();
-        const matchQ = !q || `${s.country} ${s.city} ${s.cc}`.toLowerCase().includes(q);
-        const matchC = state.country === "all" || s.cc === state.country;
-        const matchF = !state.onlyFav || s.fav;
-        return matchQ && matchC && matchF;
-      });
-
-      const favs = list.filter((s) => s.fav);
-      const rest = list.filter((s) => !s.fav);
-
-      const group = (title, arr) =>
-        arr.length
-          ? `<div class="caps" style="padding:var(--s-3) var(--s-1) var(--s-1)">${title}</div>
-             <div class="list">${arr.map((s) => comp.serverRow(s, s.id === snap.serverId)).join("")}</div>`
-          : "";
-
-      return `
-      <section style="display:grid;gap:var(--s-3)">
-        <div class="search">
-          ${icon.search}
-          <input id="search" type="search" placeholder="Страна или город" value="${esc(state.query)}" aria-label="Поиск сервера">
-        </div>
-        <div class="chips" role="group" aria-label="Фильтр по странам">
-          <button class="chip" aria-pressed="${state.country === "all" && !state.onlyFav}" data-filter="all">Все · ${servers.length}</button>
-          <button class="chip" aria-pressed="${state.onlyFav}" data-filter="fav">★ Избранные</button>
-          ${countries.map(([cc, name]) => `<button class="chip" aria-pressed="${state.country === cc}" data-filter="${cc}">${cc} · ${esc(name)}</button>`).join("")}
-        </div>
-
-        ${list.length === 0
-          ? comp.empty("Ничего не найдено", "Измени запрос или сбрось фильтр по стране.", `<button class="btn" data-filter="all">Сбросить фильтры</button>`)
-          : `${group("Избранные", favs)}${group(favs.length ? "Все серверы" : "Доступные серверы", rest)}`}
-      </section>`;
-    },
-
-    plan(snap) {
-      const s = snap.subscription;
-      const pct = s.totalGB > 0 ? Math.round((s.usedGB / s.totalGB) * 100) : 0;
-      const days = s.active ? "89 дней" : "0 дней";
-      return `
-      <section style="display:grid;gap:var(--s-4)">
-        <div class="card plan">
-          <div class="plan-top">
-            <div>
-              <div class="caps">Тариф</div>
-              <div class="plan-name">${esc(s.plan)}</div>
-              <div class="faint" style="font-size:var(--fs-13)">активна до ${esc(s.until)} · ${days}</div>
-            </div>
-            ${s.active ? `<span class="badge" data-state="connected"><span class="dot"></span>Активна</span>`
-                       : `<span class="badge" data-state="error"><span class="dot"></span>Истекла</span>`}
-          </div>
-
-          <div>
-            <div style="display:flex;justify-content:space-between;margin-bottom:var(--s-2)">
-              <span class="caps">Трафик</span>
-              <span class="num muted" style="font-size:var(--fs-13)">${s.totalGB > 0 ? s.usedGB + " / " + s.totalGB + " ГБ" : "без лимита"}</span>
-            </div>
-            <div class="bar"><i style="width:${pct}%"></i></div>
-          </div>
-
-          <div class="kv">
-            <div><div class="k">Устройства</div><div class="v num">${s.devices} / ${s.deviceLimit}</div></div>
-            <div><div class="k">Осталось</div><div class="v num">${s.totalGB > 0 ? (s.totalGB - s.usedGB).toFixed(1) + " ГБ" : "∞"}</div></div>
-            <div><div class="k">Серверов</div><div class="v num">8</div></div>
-          </div>
-
-          <div style="display:flex;gap:var(--s-2);flex-wrap:wrap">
-            <button class="btn primary" data-action="renew">Продлить на год · 3 490 ₽</button>
-            <button class="btn" data-action="toast" data-msg="Код приглашения скопирован">Пригласить друга</button>
-          </div>
-        </div>
-
-        <div class="card">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--s-3)">
-            <span class="caps">Устройства</span>
-            <button class="btn ghost" style="min-height:36px" data-action="toast" data-msg="Новое устройство добавлено">Добавить</button>
-          </div>
-          <div class="list">
-            ${[["Windows 11 · этот ПК", "сейчас"], ["Pixel 8 · Android", "2 дня назад"]]
-              .map(([name, when]) => `<div class="row" style="min-height:56px">
-                <span class="flag" aria-hidden="true">▣</span>
-                <span class="main"><span class="name">${esc(name)}</span><span class="sub">последняя активность · ${esc(when)}</span></span>
-                <span class="side"><button class="btn ghost" style="min-height:36px" data-action="toast" data-msg="Устройство отключено">Отключить</button></span>
-              </div>`).join("")}
-          </div>
-        </div>
-      </section>`;
-    },
-
-    apps(snap) {
-      const list = snap.apps || [];
-      return `
-      <section style="display:grid;gap:var(--s-4)">
-        <div class="card" style="display:grid;gap:var(--s-3)">
-          <div>
-            <div class="caps">Выборочный режим</div>
-            <div class="title" style="margin-top:2px">Только выбранные приложения</div>
-            <div class="faint" style="font-size:var(--fs-13);margin-top:4px">
-              Приложение запускается с нашим прокси — остальная система остаётся в обычной сети.
-              Работает для браузеров, Telegram и программ, которые уважают прокси.
+            <div class="card flat">
+              <div class="caps">Сессия</div>
+              <div class="stat"><span class="value num">${comp.fmtClock(snap.traffic.uptime)}</span></div>
+              <div class="faint" style="font-size:var(--fs-12)">${connected ? "соединение активно" : "не запущена"}</div>
             </div>
           </div>
-          <button class="btn primary" data-action="app-add">＋ Добавить приложение</button>
-        </div>
 
-        ${list.length === 0
-          ? comp.empty("Список пуст", "Добавь .exe — и запускай его через туннель, не заворачивая всю систему.", `<button class="btn" data-action="app-add">Выбрать .exe</button>`)
-          : `<div class="list">
-              ${list.map((a) => `
-                <div class="row" style="min-height:68px">
-                  <span class="flag" aria-hidden="true">${esc((a.name || "?").slice(0, 2).toUpperCase())}</span>
-                  <span class="main">
-                    <span class="name">${esc(a.name)}</span>
-                    <span class="sub">${esc(a.path)}</span>
-                  </span>
-                  <span class="side">
-                    ${comp.toggle(a.on, "app-toggle", "Через туннель: " + a.name)}
-                    <button class="btn ghost" style="min-height:38px" data-action="app-run" data-path="${esc(a.path)}" data-name="${esc(a.name)}">Запустить</button>
-                    <button class="star" data-app-del="${esc(a.path)}" aria-label="Удалить ${esc(a.name)}">×</button>
-                  </span>
-                </div>`).join("")}
-            </div>`}
-
-        <div class="card" style="border-color:var(--border)">
-          <div class="caps">Как это работает</div>
-          <div class="faint" style="font-size:var(--fs-13);line-height:1.6;margin-top:6px">
-            Chrome, Edge, Яндекс — получают флаг <code>--proxy-server</code>;<br>
-            Firefox — отдельный профиль с настройками прокси;<br>
-            остальные — переменные <code>HTTP_PROXY</code>/<code>HTTPS_PROXY</code>/<code>ALL_PROXY</code>.<br>
-            Игры и программы без поддержки прокси так не завернуть — для них нужен TUN-режим.
+          <div class="card">
+            <div class="chart-wrap">
+              <div class="chart-head">
+                <span class="caps">Скорость</span>
+                <span class="num muted" style="font-size:var(--fs-13)">${icon.arrowDown} ${comp.fmtGB(snap.traffic.down)} · ${icon.arrowUp} ${comp.fmtGB(snap.traffic.up)} МБ/с</span>
+              </div>
+              ${comp.sparkline(snap.series.length > 1 ? snap.series : [0, 0])}
+            </div>
           </div>
+
         </div>
       </section>`;
     },
@@ -459,16 +303,14 @@
           <div class="label"><span>${esc(title)}</span>${sub ? `<span class="sub">${esc(sub)}</span>` : ""}</div>
           ${control}
         </div>`;
+      const apps = snap.apps || [];
 
       return `
       <section style="display:grid;gap:var(--s-4)">
         <div class="group">
           <div class="caps group-title">Соединение</div>
           <div class="card" style="padding:0">
-            ${row("Протокол", "маскировка под TLS 1.3", `
-              <select data-setting="protocol" aria-label="Протокол">
-                ${["VLESS + Reality", "VLESS + XHTTP", "Shadowsocks 2022", "VLESS + TLS"].map((p) => `<option ${p === s.protocol ? "selected" : ""}>${p}</option>`).join("")}
-              </select>`)}
+            ${row("Протокол", "veil · TLS 1.3, маскировка под браузер, fallback на реальный сайт", `<span class="faint num" style="font-size:var(--fs-13)">veil/1</span>`)}
             ${row("Kill switch", "блокировать трафик при обрыве", comp.toggle(s.killSwitch, "set-kill", "Kill switch"))}
             ${row("Автозапуск", "подключаться при старте системы", comp.toggle(s.autostart, "set-autostart", "Автозапуск"))}
             ${row("DNS", "как резолвить имена", `
@@ -484,23 +326,36 @@
             ${row("RU-сайты напрямую", "яндекс, госуслуги, банки — без туннеля", comp.toggle(s.split, "set-split", "RU-сайты напрямую"))}
             ${row("TUN-режим", s.tun === undefined ? "нужен перезапуск от администратора" : "весь трафик ОС, включая игры и UDP", comp.toggle(!!s.tun, "set-tun", "TUN-режим"))}
             <div class="setting">
-              <div class="label"><span>Список исключений</span><span class="sub">.ru · .рф · 12 доменов · 3 подсети</span></div>
+              <div class="label"><span>Список исключений</span><span class="sub">.ru · .рф · 7410 российских подсетей</span></div>
               <button class="btn ghost" style="min-height:36px" data-action="sheet-rules">Изменить</button>
             </div>
           </div>
         </div>
 
         <div class="group">
-          <div class="caps group-title">Интерфейс и данные</div>
+          <div class="caps group-title">Приложения через туннель</div>
           <div class="card" style="padding:0">
-            ${row("Тема", "тёмная по умолчанию", `
-              <select data-setting="theme" aria-label="Тема">
-                <option ${s.theme === "dark" ? "selected" : ""} value="dark">Тёмная</option>
-                <option ${s.theme === "light" ? "selected" : ""} value="light">Светлая</option>
-                <option ${s.theme === "auto" ? "selected" : ""} value="auto">Как в системе</option>
-              </select>`)}
+            ${row("Выборочный режим", "только выбранные .exe, остальная система — мимо", `<button class="btn ghost" style="min-height:36px" data-action="app-add">Добавить</button>`)}
+            ${apps.length
+              ? apps.map((a) => `
+                <div class="setting" data-app="${esc(a.path)}">
+                  <div class="label"><span>${esc(a.name)}</span><span class="sub" title="${esc(a.path)}">${esc(a.path)}</span></div>
+                  <span style="display:flex;align-items:center;gap:var(--s-2)">
+                    <button class="btn ghost" style="min-height:36px" data-action="app-run" data-path="${esc(a.path)}" data-name="${esc(a.name)}">Запустить</button>
+                    ${comp.toggle(a.on, "app-toggle", "Через туннель: " + a.name)}
+                    <button class="star" data-app-del="${esc(a.path)}" aria-label="Удалить ${esc(a.name)}">×</button>
+                  </span>
+                </div>`).join("")
+              : `<div class="setting"><div class="label"><span class="faint" style="font-size:var(--fs-13)">Список пуст — добавь .exe, чтобы запускать его через туннель</span></div></div>`}
+          </div>
+        </div>
+
+        <div class="group">
+          <div class="caps group-title">Данные</div>
+          <div class="card" style="padding:0">
+            ${row("Ключи", "ключи veil:// из буфера", `<button class="btn ghost" style="min-height:36px" data-action="add-key">Добавить</button>`)}
             ${row("Логи", "последние 200 строк", `<button class="btn ghost" style="min-height:36px" data-action="sheet-logs">Открыть</button>`)}
-            ${row("Версия", "0.9.0 · ядро 1.27.4", `<span class="faint num" style="font-size:var(--fs-13)">обновлено</span>`)}
+            ${row("Версия", "0.9.1 · Go 1.27.4", `<span class="faint num" style="font-size:var(--fs-13)">обновлено</span>`)}
           </div>
         </div>
       </section>`;
@@ -513,16 +368,12 @@
     if (!snap) return;
     const servers = adapter.serverList();
 
-    document.documentElement.dataset.theme = state.theme;
+    document.documentElement.dataset.theme = "dark";
     const badgeHost = $("#topBadgeHost");
     if (badgeHost) badgeHost.innerHTML = comp.badge(snap.state);
 
     const view = $("#view");
-    if (state.tab === "home") view.innerHTML = views.home(snap, servers);
-    else if (state.tab === "servers") view.innerHTML = views.servers(snap, servers);
-    else if (state.tab === "plan") view.innerHTML = views.plan(snap);
-    else if (state.tab === "apps") view.innerHTML = views.apps(snap);
-    else view.innerHTML = views.settings(snap);
+    view.innerHTML = state.tab === "settings" ? views.settings(snap) : views.home(snap, servers);
 
     document.querySelectorAll(".tab").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.tab === state.tab)));
     if (state.tab === "home") decorateHero();
@@ -538,31 +389,30 @@
     const tab = e.target.closest(".tab");
     if (tab) { state.tab = tab.dataset.tab; render(); return; }
 
-    const filter = e.target.closest("[data-filter]");
-    if (filter) {
-      const v = filter.dataset.filter;
-      if (v === "all") { state.country = "all"; state.onlyFav = false; }
-      else if (v === "fav") { state.onlyFav = true; state.country = "all"; }
-      else { state.country = v; state.onlyFav = false; }
-      render(); return;
-    }
-
     const appDel = e.target.closest("[data-app-del]");
     if (appDel) { e.stopPropagation(); adapter.appDel(appDel.dataset.appDel); return; }
 
     const appToggle = e.target.closest('[data-action="app-toggle"]');
     if (appToggle) {
-      const row = appToggle.closest(".row");
-      const path = row && row.querySelector(".sub") ? row.querySelector(".sub").textContent : "";
-      adapter.appToggle(path);
+      const box = appToggle.closest("[data-app]");
+      adapter.appToggle(box ? box.dataset.app : "");
       return;
     }
 
     const fav = e.target.closest("[data-fav]");
     if (fav) { e.stopPropagation(); adapter.toggleFav(fav.dataset.fav); return; }
 
-    const row = e.target.closest("[data-server]");
-    if (row) { adapter.selectServer(row.dataset.server); return; }
+    // плитка сервера: другой — переключаемся, тот же и уже подключено — отключаем
+    const tile = e.target.closest("[data-server]");
+    if (tile && !e.target.closest("[data-fav]")) {
+      const snap = state.snapshot;
+      const id = tile.dataset.server;
+      if (snap.state === "connecting") return;
+      if (snap.state === "connected" && snap.serverId === id) { await adapter.disconnect(); return; }
+      if (snap.serverId !== id) adapter.selectServer(id);
+      if (state.snapshot.state !== "connected") await adapter.connect();
+      return;
+    }
 
     const action = e.target.closest("[data-action]");
     if (!action) return;
@@ -572,48 +422,23 @@
     if (a === "toggle") {
       if (snap.state === "connected") await adapter.disconnect();
       else if (snap.state !== "connecting") await adapter.connect();
-    } else if (a === "go-servers") { state.tab = "servers"; render(); }
-    else if (a === "go-plan") { state.tab = "plan"; render(); }
-    else if (a === "quick-split") adapter.setSetting("split", !snap.settings.split);
-    else if (a === "quick-kill") adapter.setSetting("killSwitch", !snap.settings.killSwitch);
-    else if (a === "quick-autostart") adapter.setSetting("autostart", !snap.settings.autostart);
-    else if (a === "set-kill") adapter.setSetting("killSwitch", !snap.settings.killSwitch);
+    } else if (a === "set-kill") adapter.setSetting("killSwitch", !snap.settings.killSwitch);
     else if (a === "set-autostart") adapter.setSetting("autostart", !snap.settings.autostart);
     else if (a === "set-split") adapter.setSetting("split", !snap.settings.split);
     else if (a === "set-tun") adapter.setSetting("tun", !snap.settings.tun);
-    else if (a === "renew") toast("Переходим к оплате…", "ok");
+    else if (a === "add-key") toast("Вставь ключ veil:// из буфера — сервер появится в списке", "ok");
     else if (a === "app-add") adapter.appAdd();
     else if (a === "app-run") adapter.appRun(action.dataset.path);
     else if (a === "sheet-rules") openSheet("Исключения маршрутизации", rulesSheet());
     else if (a === "sheet-logs") openSheet("Логи клиента", logsSheet());
     else if (a === "toast") toast(action.dataset.msg || "Готово", "ok");
     else if (a === "close-sheet") closeSheet();
-    else if (a === "theme") toggleTheme();
-  });
-
-  document.addEventListener("input", (e) => {
-    if (e.target.id === "search") {
-      state.query = e.target.value;
-      const listHost = e.target.closest("section");
-      const snap = state.snapshot;
-      const servers = adapter.serverList();
-      const html = views.servers(snap, servers);
-      const tmp = document.createElement("div");
-      tmp.innerHTML = html;
-      // заменяем только содержимое после строки поиска, чтобы не терять фокус
-      const fresh = tmp.querySelector(".chips").parentElement.innerHTML;
-      listHost.innerHTML = fresh;
-      const input = $("#search");
-      input.focus();
-      input.setSelectionRange(input.value.length, input.value.length);
-    }
   });
 
   document.addEventListener("change", (e) => {
     const sel = e.target.closest("[data-setting]");
     if (!sel) return;
     const key = sel.dataset.setting;
-    if (key === "theme") { state.theme = sel.value === "auto" ? (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark") : sel.value; adapter.setSetting("theme", sel.value); }
     adapter.setSetting(key, sel.value);
   });
 
@@ -668,12 +493,6 @@
     setTimeout(() => el.remove(), 2600);
   }
 
-  function toggleTheme() {
-    state.theme = state.theme === "dark" ? "light" : "dark";
-    adapter.setSetting("theme", state.theme);
-    render();
-  }
-  $("#themeBtn").addEventListener("click", toggleTheme);
 
   /* ── демо-состояния (?demo=1&state=error) ────────────────────────────── */
   function applyForcedState(snap) {
@@ -684,8 +503,6 @@
     if (f === "connected") snap.state = "connected";
     if (f === "error") { snap.state = "error"; snap.error = "Сервер отклонил TLS-рукопожатие"; }
     if (f === "no-internet") snap.state = "no-internet";
-    if (f === "no-sub") snap.subscription.active = false;
-    if (f === "expired") { snap.subscription.active = false; snap.subscription.until = "01.11.2026"; snap.subscription.plan = "Год · Про"; }
     if (f === "loading") state.loading = true;
     if (f === "empty") state.forcedEmpty = true;
     return snap;
@@ -696,7 +513,6 @@
     adapter = a;
     adapter.subscribe((snap) => {
       state.snapshot = applyForcedState(snap);
-      state.theme = state.snapshot.settings.theme === "light" ? "light" : state.theme;
       render();
     });
   }

@@ -934,8 +934,8 @@ namespace Veil
                 Profile p = core.Profiles[i];
                 if (i > 0) sb.Append(',');
                 sb.Append("{\"id\":\"").Append(Esc(p.Server)).Append("\"")
-                  .Append(",\"cc\":\"").Append(Esc(p.Cc.Length > 0 ? p.Cc : "··")).Append("\"")
-                  .Append(",\"country\":\"").Append(Esc(p.Country.Length > 0 ? p.Country : p.Title)).Append("\"")
+                  .Append(",\"cc\":\"").Append(Esc(p.Cc.Length > 0 ? p.Cc : "IP")).Append("\"")
+                  .Append(",\"country\":\"").Append(Esc(p.Country.Length > 0 ? p.Country : "По IP")).Append("\"")
                   .Append(",\"city\":\"").Append(Esc(p.ExitIp.Length > 0 ? p.ExitIp : "ожидает проверки")).Append("\"")
                   .Append(",\"ping\":").Append(p == core.Current ? core.LastPing : 0)
                   .Append(",\"load\":0,\"fav\":false}");
