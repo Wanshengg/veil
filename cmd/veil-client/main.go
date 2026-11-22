@@ -12,7 +12,9 @@ import (
 	"io"
 	"log"
 	"net"
+	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	utls "github.com/refraction-networking/utls"
@@ -34,7 +36,9 @@ func main() {
 	insecure := flag.Bool("insecure", false, "skip certificate verification (self-signed tests only)")
 	fp := flag.String("fp", "chrome", "TLS fingerprint: chrome|firefox|safari|edge|random")
 	probe := flag.String("probe-hello", "", "dial this address with the utls fingerprint, then exit (self-check)")
+	cfgPath := flag.String("config", "", "optional key=value config file (flags win)")
 	flag.Parse()
+	applyConfig(*cfgPath)
 
 	if *psk == "" {
 		log.Fatal("veil-client: -psk is required")
@@ -74,6 +78,36 @@ func main() {
 			continue
 		}
 		go handleSocks(c, *server, sniName, key, *insecure, *fp)
+	}
+}
+
+// applyConfig fills flags from a simple key=value file; explicit CLI flags win.
+func applyConfig(path string) {
+	if path == "" {
+		return
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		log.Fatalf("veil-client: config: %v", err)
+	}
+	seen := map[string]bool{}
+	flag.Visit(func(f *flag.Flag) { seen[f.Name] = true })
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
+			continue
+		}
+		k, v, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		k, v = strings.TrimSpace(k), strings.TrimSpace(v)
+		if seen[k] {
+			continue
+		}
+		if err := flag.Set(k, v); err != nil {
+			log.Fatalf("veil-client: config %q: %v", k, err)
+		}
 	}
 }
 
