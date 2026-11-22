@@ -45,6 +45,7 @@ namespace Veil
         public static readonly Font Title = new Font("Segoe UI Semibold", 11f);
         public static readonly Font Big = new Font("Segoe UI Semibold", 13.5f);
         public static readonly Font Mono = new Font("Consolas", 8f);
+        public static readonly Font Small = new Font("Segoe UI", 8.5f);
     }
 
     static class Draw
@@ -85,28 +86,19 @@ namespace Veil
             using (SolidBrush b = new SolidBrush(color))
                 g.FillEllipse(b, c.X - radius, c.Y - radius, radius * 2, radius * 2);
         }
-    }
 
-    class CardPanel : Panel
-    {
-        public int Radius = 14;
-        public Color Fill = Theme.Card;
-        public Color Border = Theme.Line;
-
-        public CardPanel()
+        public static void Chip(Graphics g, Rectangle r, string code, Color accent)
         {
-            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint, true);
-            BackColor = Color.Transparent;
+            using (GraphicsPath p = Round(r, 7))
+            {
+                using (SolidBrush b = new SolidBrush(Color.FromArgb(38, accent)))
+                    g.FillPath(b, p);
+                using (Pen pen = new Pen(Color.FromArgb(90, accent), 1f))
+                    g.DrawPath(pen, p);
+            }
+            TextRenderer.DrawText(g, code, new Font("Segoe UI Semibold", 8.5f), r, accent,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
         }
-
-        protected override void OnPaint(PaintEventArgs e)
-        {
-            e.Graphics.Clear(Theme.Bg1);
-            Draw.Card(e.Graphics, new Rectangle(0, 0, Width - 1, Height - 1), Radius, Fill, Border);
-            OnPainted(e.Graphics);
-        }
-
-        protected virtual void OnPainted(Graphics g) { }
     }
 
     class FlatButton : Control
@@ -132,7 +124,7 @@ namespace Veil
         {
             Graphics g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
-            g.Clear(Parent != null ? Parent.BackColor : Theme.Bg1);
+            g.Clear(Theme.Bg1);
             Rectangle r = new Rectangle(0, 0, Width - 1, Height - 1);
 
             if (Primary)
@@ -141,8 +133,7 @@ namespace Veil
                 if (!Enabled) { a = Color.FromArgb(58, 67, 82); b = Color.FromArgb(48, 56, 70); }
                 else if (down) { a = ControlPaint.Dark(Accent, 0.15f); b = ControlPaint.Dark(Accent2, 0.15f); }
                 using (GraphicsPath p = Draw.Round(r, 12))
-                using (LinearGradientBrush br = new LinearGradientBrush(
-                    new Rectangle(0, 0, Width, Height), a, b, 0f))
+                using (LinearGradientBrush br = new LinearGradientBrush(new Rectangle(0, 0, Width, Height), a, b, 0f))
                     g.FillPath(br, p);
                 if (hover && Enabled)
                     using (GraphicsPath p = Draw.Round(r, 12))
@@ -157,6 +148,51 @@ namespace Veil
                 Draw.Card(g, r, 10, fill, Theme.Line);
                 TextRenderer.DrawText(g, Text, Theme.UI, r, Enabled ? Theme.Text : Theme.Muted,
                     TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+            }
+        }
+    }
+
+    static class Countries
+    {
+        static readonly Dictionary<string, string> Ru = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            {"ES","Испания"},{"DE","Германия"},{"NL","Нидерланды"},{"FR","Франция"},{"US","США"},
+            {"GB","Великобритания"},{"FI","Финляндия"},{"SE","Швеция"},{"PL","Польша"},{"TR","Турция"},
+            {"RU","Россия"},{"KZ","Казахстан"},{"UA","Украина"},{"CH","Швейцария"},{"AT","Австрия"},
+            {"CZ","Чехия"},{"RO","Румыния"},{"BG","Болгария"},{"LT","Литва"},{"LV","Латвия"},
+            {"EE","Эстония"},{"MD","Молдова"},{"GE","Грузия"},{"AM","Армения"},{"AE","ОАЭ"},
+            {"SG","Сингапур"},{"JP","Япония"},{"KR","Корея"},{"CN","Китай"},{"IN","Индия"},
+            {"CA","Канада"},{"BR","Бразилия"},{"AU","Австралия"},{"IT","Италия"},{"PT","Португалия"},
+            {"NO","Норвегия"},{"DK","Дания"},{"IE","Ирландия"},{"BE","Бельгия"},{"HU","Венгрия"},
+            {"RS","Сербия"},{"HR","Хорватия"},{"SK","Словакия"},{"SI","Словения"},{"GR","Греция"},
+            {"IL","Израиль"},{"HK","Гонконг"},{"TW","Тайвань"},{"TH","Таиланд"},{"VN","Вьетнам"}
+        };
+
+        public static string Name(string cc, string fallback)
+        {
+            if (string.IsNullOrEmpty(cc)) return fallback;
+            string n;
+            return Ru.TryGetValue(cc, out n) ? n : (string.IsNullOrEmpty(fallback) ? cc : fallback);
+        }
+    }
+
+    class Profile
+    {
+        public string Key = "";          // veil://...
+        public string Server = "";       // host:port
+        public string Sni = "";
+        public string Fp = "chrome";
+        public string Psk = "";
+        public string Cc = "";           // country code, e.g. ES
+        public string Country = "";      // country name
+        public string ExitIp = "";
+
+        public string Title
+        {
+            get
+            {
+                int i = Server.IndexOf(':');
+                return i > 0 ? Server.Substring(0, i) : Server;
             }
         }
     }
@@ -190,6 +226,47 @@ namespace Veil
             }
             catch { return false; }
         }
+
+        public static Profile ToProfile(string key)
+        {
+            string server, sni, fp, psk;
+            if (!TryParse(key, out server, out sni, out fp, out psk)) return null;
+            Profile p = new Profile();
+            p.Key = key.Trim(); p.Server = server; p.Sni = sni; p.Fp = fp; p.Psk = psk;
+            return p;
+        }
+    }
+
+    static class Store
+    {
+        // one profile per line: veil://...\tCC\tCountry\tIP
+        static string PathFile { get { return System.IO.Path.Combine(Engine.Dir, "profiles.txt"); } }
+
+        public static List<Profile> Load()
+        {
+            List<Profile> list = new List<Profile>();
+            if (!File.Exists(PathFile)) return list;
+            foreach (string line in File.ReadAllLines(PathFile))
+            {
+                if (line.Trim().Length == 0) continue;
+                string[] f = line.Split('\t');
+                Profile p = KeyCodec.ToProfile(f[0]);
+                if (p == null) continue;
+                if (f.Length > 1) p.Cc = f[1];
+                if (f.Length > 2) p.Country = f[2];
+                if (f.Length > 3) p.ExitIp = f[3];
+                list.Add(p);
+            }
+            return list;
+        }
+
+        public static void Save(List<Profile> list)
+        {
+            StringBuilder sb = new StringBuilder();
+            foreach (Profile p in list)
+                sb.AppendLine(p.Key + "\t" + p.Cc + "\t" + p.Country + "\t" + p.ExitIp);
+            File.WriteAllText(PathFile, sb.ToString(), new UTF8Encoding(false));
+        }
     }
 
     static class SysProxy
@@ -201,7 +278,7 @@ namespace Veil
         [DllImport("wininet.dll", SetLastError = true)]
         static extern bool InternetSetOption(IntPtr hInternet, int option, IntPtr buffer, int length);
 
-        static string BackupPath { get { return Path.Combine(Engine.Dir, "proxy.bak"); } }
+        static string BackupPath { get { return System.IO.Path.Combine(Engine.Dir, "proxy.bak"); } }
 
         public static void Enable(string socks)
         {
@@ -268,15 +345,14 @@ namespace Veil
         {
             get
             {
-                string d = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "veil");
+                string d = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "veil");
                 Directory.CreateDirectory(d);
                 return d;
             }
         }
 
-        public static string ClientPath { get { return Path.Combine(Dir, "veil-client.exe"); } }
-        public static string IniPath { get { return Path.Combine(Dir, "veil.ini"); } }
-        public static string KeyPath { get { return Path.Combine(Dir, "key.txt"); } }
+        public static string ClientPath { get { return System.IO.Path.Combine(Dir, "veil-client.exe"); } }
+        public static string IniPath { get { return System.IO.Path.Combine(Dir, "veil.ini"); } }
 
         public static void ExtractClient()
         {
@@ -292,15 +368,15 @@ namespace Veil
             }
         }
 
-        public static void WriteIni(string server, string sni, string fp, string psk)
+        public static void WriteIni(Profile p)
         {
             string ini =
                 "# generated by veil client\n" +
-                "server = " + server + "\n" +
-                "sni    = " + sni + "\n" +
-                "psk    = " + psk + "\n" +
+                "server = " + p.Server + "\n" +
+                "sni    = " + p.Sni + "\n" +
+                "psk    = " + p.Psk + "\n" +
                 "socks  = 127.0.0.1:1080\n" +
-                "fp     = " + fp + "\n";
+                "fp     = " + p.Fp + "\n";
             File.WriteAllText(IniPath, ini, new UTF8Encoding(false));
         }
 
@@ -325,7 +401,6 @@ namespace Veil
         static void Add(string line)
         {
             if (line == null) return;
-            // trim "2026/11/22 05:52:49 " -> "05:52:49 "
             if (line.Length > 20 && line[4] == '/' && line[7] == '/' && line[13] == ':')
                 line = line.Substring(11);
             lock (Log)
@@ -366,61 +441,286 @@ namespace Veil
         }
     }
 
-    class StatusCard : CardPanel
+    static class Socks
+    {
+        // Minimal SOCKS5 HTTP GET through the local tunnel.
+        public static string Get(string host, string path, int timeoutMs)
+        {
+            try
+            {
+                using (TcpClient c = new TcpClient())
+                {
+                    c.ReceiveTimeout = timeoutMs;
+                    c.Connect("127.0.0.1", 1080);
+                    NetworkStream s = c.GetStream();
+                    s.ReadTimeout = timeoutMs;
+                    s.Write(new byte[] { 5, 1, 0 }, 0, 3);
+                    byte[] r = new byte[2];
+                    if (s.Read(r, 0, 2) != 2 || r[1] != 0) return null;
+
+                    byte[] hb = Encoding.ASCII.GetBytes(host);
+                    byte[] req = new byte[5 + hb.Length + 2];
+                    req[0] = 5; req[1] = 1; req[2] = 0; req[3] = 3; req[4] = (byte)hb.Length;
+                    Array.Copy(hb, 0, req, 5, hb.Length);
+                    req[5 + hb.Length] = 0; req[6 + hb.Length] = 80;
+                    s.Write(req, 0, req.Length);
+
+                    byte[] rep = new byte[4];
+                    if (s.Read(rep, 0, 4) != 4 || rep[1] != 0) return null;
+                    if (rep[3] == 1) { byte[] sk = new byte[6]; s.Read(sk, 0, 6); }
+                    else if (rep[3] == 4) { byte[] sk = new byte[18]; s.Read(sk, 0, 18); }
+                    else { int l = s.ReadByte(); byte[] sk = new byte[l + 2]; s.Read(sk, 0, sk.Length); }
+
+                    byte[] get = Encoding.ASCII.GetBytes(
+                        "GET " + path + " HTTP/1.0\r\nHost: " + host + "\r\nUser-Agent: veil/1\r\nConnection: close\r\n\r\n");
+                    s.Write(get, 0, get.Length);
+
+                    MemoryStream ms = new MemoryStream();
+                    byte[] buf = new byte[8192];
+                    while (true)
+                    {
+                        int n = s.Read(buf, 0, buf.Length);
+                        if (n <= 0) break;
+                        ms.Write(buf, 0, n);
+                        if (ms.Length > 65536) break;
+                    }
+                    string all = Encoding.UTF8.GetString(ms.ToArray());
+                    int body = all.IndexOf("\r\n\r\n", StringComparison.Ordinal);
+                    return body >= 0 ? all.Substring(body + 4) : all;
+                }
+            }
+            catch { return null; }
+        }
+
+        public static void LookupCountry(Profile p, Action<Profile> done)
+        {
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                string body = Get("ip-api.com", "/json/?fields=status,country,countryCode,query", 15000);
+                if (string.IsNullOrEmpty(body)) { done(p); return; }
+                string cc = Json(body, "countryCode");
+                string country = Json(body, "country");
+                string ip = Json(body, "query");
+                if (cc != null && cc.Length == 2)
+                {
+                    p.Cc = cc.ToUpperInvariant();
+                    p.Country = country ?? "";
+                    p.ExitIp = ip ?? "";
+                }
+                done(p);
+            });
+        }
+
+        static string Json(string s, string key)
+        {
+            string pat = "\"" + key + "\":\"";
+            int i = s.IndexOf(pat, StringComparison.OrdinalIgnoreCase);
+            if (i < 0) return null;
+            i += pat.Length;
+            int j = s.IndexOf('"', i);
+            return j > i ? s.Substring(i, j - i) : null;
+        }
+    }
+
+    class StatusCard : Panel
     {
         public bool Connected, Connecting;
         public string Server = "не подключено";
+        public string Cc = "", Country = "", ExitIp = "";
         public double Pulse;
+        public DateTime Start = DateTime.Now;
 
-        protected override void OnPainted(Graphics g)
+        public StatusCard()
         {
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint, true);
+            BackColor = Color.Transparent;
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            Graphics g = e.Graphics;
+            g.Clear(Theme.Bg1);
+            Draw.Card(g, new Rectangle(0, 0, Width - 1, Height - 1), 14, Theme.Card, Theme.Line);
+
             Color c = Connected ? Theme.Ok : (Connecting ? Theme.Warn : Color.FromArgb(110, 122, 138));
             int alpha = (Connected || Connecting) ? (int)(90 + 90 * Math.Abs(Math.Sin(Pulse))) : 40;
             Draw.Glow(g, new Point(34, 40), 6, c, alpha);
 
             TextRenderer.DrawText(g, Connected ? "Подключено" : (Connecting ? "Подключение…" : "Отключено"),
-                Theme.Big, new Rectangle(56, 20, 250, 26), Theme.Text,
+                Theme.Big, new Rectangle(56, 20, 240, 26), Theme.Text,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
-            TextRenderer.DrawText(g, Connected ? Server : "вставь ключ и нажми кнопку",
-                Theme.UI, new Rectangle(56, 48, 270, 20), Theme.Muted,
+
+            string sub = Connected
+                ? Server + (Country.Length > 0 ? "  ·  " + Countries.Name(Cc, Country) : "")
+                : "выбери сервер и нажми кнопку";
+            TextRenderer.DrawText(g, sub, Theme.UI, new Rectangle(56, 48, 300, 20), Theme.Muted,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
 
+            if (Cc.Length > 0)
+            {
+                Rectangle chip = new Rectangle(Width - 108, 22, 38, 20);
+                Draw.Chip(g, chip, Cc, Connected ? Theme.Ok : Theme.Muted);
+                if (ExitIp.Length > 0)
+                    TextRenderer.DrawText(g, ExitIp, Theme.Mono, new Rectangle(Width - 190, 48, 120, 18),
+                        Color.FromArgb(110, 122, 138), TextFormatFlags.Right | TextFormatFlags.VerticalCenter);
+            }
             if (Connected)
             {
                 string up = (DateTime.Now - Start).ToString(@"hh\:mm\:ss");
-                TextRenderer.DrawText(g, up, Theme.Mono, new Rectangle(330, 26, 96, 20), Theme.Text,
-                    TextFormatFlags.Right | TextFormatFlags.VerticalCenter);
-                TextRenderer.DrawText(g, "uptime", Theme.UI, new Rectangle(330, 46, 96, 18), Color.FromArgb(92, 103, 118),
+                TextRenderer.DrawText(g, up, Theme.Mono, new Rectangle(Width - 190, 24, 74, 18), Theme.Text,
                     TextFormatFlags.Right | TextFormatFlags.VerticalCenter);
             }
         }
+    }
 
-        public DateTime Start = DateTime.Now;
+    class ProfileList : Panel
+    {
+        public readonly List<Profile> Items = new List<Profile>();
+        public int Selected = -1;
+        public event EventHandler Activate;
+        int hover = -1, scroll = 0;
+        const int RowH = 48, Pad = 8;
+
+        public ProfileList()
+        {
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint, true);
+            BackColor = Theme.Bg1;
+        }
+
+        int VisibleRows { get { return Math.Max(1, (Height - Pad * 2) / RowH); } }
+
+        public void SetItems(List<Profile> items, int sel)
+        {
+            Items.Clear();
+            Items.AddRange(items);
+            Selected = sel;
+            scroll = 0;
+            Invalidate();
+        }
+
+        protected override void OnMouseMove(MouseEventArgs e)
+        {
+            int idx = IndexAt(e.Y);
+            if (idx != hover) { hover = idx; Invalidate(); }
+            Cursor = idx >= 0 ? Cursors.Hand : Cursors.Default;
+            base.OnMouseMove(e);
+        }
+
+        protected override void OnMouseLeave(EventArgs e) { hover = -1; Invalidate(); base.OnMouseLeave(e); }
+
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            int idx = IndexAt(e.Y);
+            if (idx >= 0)
+            {
+                if (e.X > Width - 40 && Items.Count > 1) { Items.RemoveAt(idx); Selected = Math.Min(Selected, Items.Count - 1); scroll = 0; Invalidate(); return; }
+                Selected = idx;
+                Invalidate();
+                if (e.Clicks > 1 && Activate != null) Activate(this, EventArgs.Empty);
+            }
+            base.OnMouseDown(e);
+        }
+
+        protected override void OnMouseWheel(MouseEventArgs e)
+        {
+            int max = Math.Max(0, Items.Count - VisibleRows);
+            scroll = Math.Max(0, Math.Min(max, scroll - Math.Sign(e.Delta)));
+            Invalidate();
+            base.OnMouseWheel(e);
+        }
+
+        int IndexAt(int y)
+        {
+            int i = (y - Pad) / RowH;
+            if (i < 0 || i >= VisibleRows) return -1;
+            int real = scroll + i;
+            return real < Items.Count ? real : -1;
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            Graphics g = e.Graphics;
+            g.Clear(Theme.Bg1);
+            Draw.Card(g, new Rectangle(0, 0, Width - 1, Height - 1), 14, Theme.Card, Theme.Line);
+
+            if (Items.Count == 0)
+            {
+                TextRenderer.DrawText(g, "нет серверов — добавь ключ", Theme.UI,
+                    new Rectangle(0, 0, Width, Height), Theme.Muted,
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+                return;
+            }
+
+            for (int i = 0; i < VisibleRows; i++)
+            {
+                int real = scroll + i;
+                if (real >= Items.Count) break;
+                Profile p = Items[real];
+                Rectangle row = new Rectangle(Pad, Pad + i * RowH, Width - Pad * 2, RowH - 4);
+                bool sel = real == Selected, hov = real == hover;
+
+                if (sel)
+                    Draw.Card(g, row, 10, Color.FromArgb(32, 42, 58), Color.FromArgb(70, 96, 140));
+                else if (hov)
+                    Draw.Card(g, row, 10, Theme.CardHi, Theme.Line);
+
+                if (sel)
+                {
+                    using (GraphicsPath pth = Draw.Round(new Rectangle(row.X + 6, row.Y + 12, 3, row.Height - 24), 2))
+                    using (SolidBrush b = new SolidBrush(Theme.Accent))
+                        g.FillPath(b, pth);
+                }
+
+                TextRenderer.DrawText(g, p.Title, Theme.UIBold, new Rectangle(row.X + 18, row.Y + 7, row.Width - 90, 20),
+                    Theme.Text, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+                string sub;
+                if (p.Cc.Length == 0) sub = p.Server + "  ·  страна не проверена";
+                else sub = Countries.Name(p.Cc, p.Country) + "  ·  " + p.ExitIp;
+                TextRenderer.DrawText(g, sub, Theme.Small, new Rectangle(row.X + 18, row.Y + 25, row.Width - 90, 16),
+                    Theme.Muted, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+
+                if (p.Cc.Length > 0)
+                    Draw.Chip(g, new Rectangle(row.Right - 82, row.Y + 13, 36, 20), p.Cc, Theme.Ok);
+                else
+                    Draw.Chip(g, new Rectangle(row.Right - 84, row.Y + 13, 38, 20), "?", Color.FromArgb(120, 132, 148));
+
+                TextRenderer.DrawText(g, "×", Theme.UI, new Rectangle(row.Right - 30, row.Y + 12, 22, 22),
+                    Color.FromArgb(110, 120, 136), TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+            }
+
+            if (Items.Count > VisibleRows)
+            {
+                int h = Height - Pad * 2;
+                int th = Math.Max(18, h * VisibleRows / Items.Count);
+                int ty = Pad + (h - th) * scroll / Math.Max(1, Items.Count - VisibleRows);
+                using (SolidBrush b = new SolidBrush(Color.FromArgb(60, 72, 88)))
+                    g.FillRectangle(b, Width - 6, ty, 3, th);
+            }
+        }
     }
 
     class MainForm : Form
     {
-        const int W = 480, H = 532;
-        readonly TextBox txtKey = new TextBox();
+        const int W = 480, H = 640;
+        readonly ProfileList list = new ProfileList();
+        readonly FlatButton btnAdd = new FlatButton();
         readonly FlatButton btnGo = new FlatButton();
-        readonly FlatButton btnPaste = new FlatButton();
         readonly FlatButton btnMin = new FlatButton();
         readonly FlatButton btnClose = new FlatButton();
         readonly StatusCard card = new StatusCard();
-        readonly Panel inputWrap = new Panel();
         readonly Panel logWrap = new Panel();
         readonly TextBox txtLog = new TextBox();
+        readonly Label logHint = new Label();
         readonly NotifyIcon tray = new NotifyIcon();
         readonly System.Windows.Forms.Timer ui = new System.Windows.Forms.Timer();
+        readonly List<Profile> profiles = new List<Profile>();
         Process proc;
-        bool busy;
+        bool busy, autoConnect;
         bool dragging;
         Point dragFrom;
 
         [DllImport("dwmapi.dll")]
         static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
-
-        readonly bool autoConnect;
 
         public MainForm(string[] args)
         {
@@ -433,8 +733,6 @@ namespace Veil
             Font = Theme.UI;
             Text = "veil";
 
-
-
             btnMin.Text = "—"; btnMin.Primary = false; btnMin.SetBounds(W - 96, 10, 34, 28);
             btnClose.Text = "✕"; btnClose.Primary = false; btnClose.SetBounds(W - 56, 10, 34, 28);
             btnMin.Click += delegate { WindowState = FormWindowState.Minimized; };
@@ -445,50 +743,26 @@ namespace Veil
             card.SetBounds(20, 56, W - 40, 92);
             Controls.Add(card);
 
-            Label lKey = new Label();
-            lKey.Text = "Ключ доступа";
-            lKey.ForeColor = Theme.Muted;
-            lKey.BackColor = Color.Transparent;
-            lKey.Font = Theme.UI;
-            lKey.SetBounds(24, 166, 300, 18);
-            Controls.Add(lKey);
+            Label lSrv = new Label();
+            lSrv.Text = "Серверы";
+            lSrv.ForeColor = Theme.Muted;
+            lSrv.BackColor = Color.Transparent;
+            lSrv.Font = Theme.UI;
+            lSrv.SetBounds(24, 162, 200, 18);
+            Controls.Add(lSrv);
 
-            inputWrap.SetBounds(20, 188, W - 40, 46);
-            inputWrap.BackColor = Theme.Bg1;
-            inputWrap.Paint += delegate(object s, PaintEventArgs e)
-            {
-                e.Graphics.Clear(Theme.Bg1);
-                Draw.Card(e.Graphics, new Rectangle(0, 0, inputWrap.Width - 1, inputWrap.Height - 1), 12, Theme.Card, Theme.Line);
-            };
-            Controls.Add(inputWrap);
+            list.SetBounds(20, 184, W - 40, 152);
+            list.Activate += delegate { if (!busy) Toggle(); };
+            Controls.Add(list);
 
-            txtKey.BorderStyle = BorderStyle.None;
-            txtKey.BackColor = Theme.Card;
-            txtKey.ForeColor = Theme.Text;
-            txtKey.Font = Theme.Mono;
-            txtKey.SetBounds(16, 14, inputWrap.Width - 132, 18);
-            inputWrap.Controls.Add(txtKey);
-
-            Label keyHint = new Label();
-            keyHint.Text = "veil://…";
-            keyHint.ForeColor = Color.FromArgb(96, 108, 124);
-            keyHint.BackColor = Theme.Card;
-            keyHint.Font = Theme.Mono;
-            keyHint.SetBounds(18, 15, 160, 17);
-            keyHint.Visible = txtKey.Text.Length == 0;
-            keyHint.Click += delegate { txtKey.Focus(); };
-            txtKey.TextChanged += delegate { keyHint.Visible = txtKey.Text.Length == 0; };
-            inputWrap.Controls.Add(keyHint);
-            keyHint.BringToFront();
-
-            btnPaste.Text = "вставить";
-            btnPaste.Primary = false;
-            btnPaste.SetBounds(inputWrap.Width - 104, 8, 92, 30);
-            btnPaste.Click += delegate { try { txtKey.Text = Clipboard.GetText().Trim(); } catch { } };
-            inputWrap.Controls.Add(btnPaste);
+            btnAdd.Text = "＋  Добавить ключ из буфера";
+            btnAdd.Primary = false;
+            btnAdd.SetBounds(20, 344, W - 40, 38);
+            btnAdd.Click += delegate { AddFromClipboard(true); };
+            Controls.Add(btnAdd);
 
             btnGo.Text = "Подключиться";
-            btnGo.SetBounds(20, 248, W - 40, 46);
+            btnGo.SetBounds(20, 390, W - 40, 46);
             btnGo.Click += delegate { Toggle(); };
             Controls.Add(btnGo);
 
@@ -497,15 +771,16 @@ namespace Veil
             lLog.ForeColor = Theme.Muted;
             lLog.BackColor = Color.Transparent;
             lLog.Font = Theme.UI;
-            lLog.SetBounds(24, 314, 300, 18);
+            lLog.SetBounds(24, 452, 200, 18);
             Controls.Add(lLog);
 
-            logWrap.SetBounds(20, 336, W - 40, 146);
+            logWrap.SetBounds(20, 474, W - 40, 122);
             logWrap.BackColor = Theme.Bg1;
             logWrap.Paint += delegate(object s, PaintEventArgs e)
             {
                 e.Graphics.Clear(Theme.Bg1);
-                Draw.Card(e.Graphics, new Rectangle(0, 0, logWrap.Width - 1, logWrap.Height - 1), 12, Color.FromArgb(15, 20, 28), Theme.Line);
+                Draw.Card(e.Graphics, new Rectangle(0, 0, logWrap.Width - 1, logWrap.Height - 1), 12,
+                    Color.FromArgb(15, 20, 28), Theme.Line);
             };
             Controls.Add(logWrap);
 
@@ -517,10 +792,9 @@ namespace Veil
             txtLog.ReadOnly = true;
             txtLog.ScrollBars = ScrollBars.None;
             txtLog.WordWrap = true;
-            txtLog.SetBounds(14, 12, logWrap.Width - 28, logWrap.Height - 24);
+            txtLog.SetBounds(14, 10, logWrap.Width - 28, logWrap.Height - 20);
             logWrap.Controls.Add(txtLog);
 
-            Label logHint = new Label();
             logHint.Text = "соединений пока нет";
             logHint.ForeColor = Color.FromArgb(92, 104, 120);
             logHint.BackColor = Color.FromArgb(15, 20, 28);
@@ -541,10 +815,9 @@ namespace Veil
             cm.Items.Add("Выход", null, delegate { Close(); });
             tray.ContextMenuStrip = cm;
 
-            if (File.Exists(Engine.KeyPath))
-            {
-                try { txtKey.Text = File.ReadAllText(Engine.KeyPath).Trim(); } catch { }
-            }
+            profiles.AddRange(Store.Load());
+            list.SetItems(profiles, profiles.Count > 0 ? 0 : -1);
+            ShowCurrent();
 
             ui.Interval = 40;
             ui.Tick += delegate { Tick(); };
@@ -557,12 +830,14 @@ namespace Veil
         protected override void OnHandleCreated(EventArgs e)
         {
             base.OnHandleCreated(e);
-            try
-            {
-                int pref = 2; // DWMWCP_ROUND
-                DwmSetWindowAttribute(Handle, 33, ref pref, sizeof(int));
-            }
+            try { int pref = 2; DwmSetWindowAttribute(Handle, 33, ref pref, sizeof(int)); }
             catch { }
+        }
+
+        protected override void OnShown(EventArgs e)
+        {
+            base.OnShown(e);
+            if (autoConnect && profiles.Count > 0) BeginInvoke(new MethodInvoker(delegate { Toggle(); }));
         }
 
         protected override CreateParams CreateParams
@@ -575,18 +850,66 @@ namespace Veil
             }
         }
 
-        protected override void OnShown(EventArgs e)
+        void Restore() { Show(); WindowState = FormWindowState.Normal; Activate(); }
+
+        Profile Current
         {
-            base.OnShown(e);
-            if (autoConnect) BeginInvoke(new MethodInvoker(delegate { Toggle(); }));
+            get
+            {
+                if (list.Selected < 0 || list.Selected >= profiles.Count) return null;
+                return profiles[list.Selected];
+            }
         }
 
-        void Restore() { Show(); WindowState = FormWindowState.Normal; Activate(); }
+        void ShowCurrent()
+        {
+            Profile p = Current;
+            btnGo.Text = (proc != null && !proc.HasExited) ? "Отключиться" : "Подключиться";
+            if (p == null) { card.Server = "не подключено"; card.Cc = ""; card.Country = ""; card.ExitIp = ""; }
+            else if (!card.Connected) { card.Server = p.Server; card.Cc = p.Cc; card.Country = p.Country; card.ExitIp = p.ExitIp; }
+            card.Invalidate();
+        }
+
+        void AddFromClipboard(bool report)
+        {
+            string text = "";
+            try { text = Clipboard.GetText(); } catch { }
+            int added = 0;
+            if (!string.IsNullOrEmpty(text))
+            {
+                string[] lines = text.Replace("\r", "\n").Split('\n');
+                List<string> keys = new List<string>();
+                foreach (string l in lines)
+                {
+                    int at = l.IndexOf("veil://", StringComparison.OrdinalIgnoreCase);
+                    if (at >= 0) keys.Add(l.Substring(at).Trim());
+                }
+                foreach (string k in keys)
+                {
+                    Profile p = KeyCodec.ToProfile(k);
+                    if (p == null) continue;
+                    bool dup = false;
+                    foreach (Profile e in profiles) if (e.Server == p.Server && e.Psk == p.Psk) dup = true;
+                    if (dup) continue;
+                    profiles.Add(p);
+                    added++;
+                }
+            }
+            if (added > 0)
+            {
+                Store.Save(profiles);
+                list.SetItems(profiles, profiles.Count - 1);
+                ShowCurrent();
+            }
+            else if (report)
+            {
+                MessageBox.Show("В буфере нет ключа veil:// (или он уже добавлен).", "veil");
+            }
+        }
 
         protected override void OnPaint(PaintEventArgs e)
         {
-            using (LinearGradientBrush b = new LinearGradientBrush(
-                new Rectangle(0, 0, W, H), Theme.Bg1, Theme.Bg2, 90f))
+            using (LinearGradientBrush b = new LinearGradientBrush(new Rectangle(0, 0, W, H), Theme.Bg1, Theme.Bg2, 90f))
                 e.Graphics.FillRectangle(b, 0, 0, W, H);
 
             Rectangle logo = new Rectangle(20, 12, 26, 26);
@@ -604,8 +927,7 @@ namespace Veil
             TextRenderer.DrawText(e.Graphics, "socks5  127.0.0.1:1080", Theme.Mono,
                 new Rectangle(24, H - 32, 240, 18), Color.FromArgb(92, 104, 120),
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
-            string right = proc == null ? "туннель выключен" : "туннель активен";
-            TextRenderer.DrawText(e.Graphics, right, Theme.UI,
+            TextRenderer.DrawText(e.Graphics, profiles.Count + " сервер(ов)", Theme.UI,
                 new Rectangle(W - 200, H - 32, 176, 18), Color.FromArgb(92, 104, 120),
                 TextFormatFlags.Right | TextFormatFlags.VerticalCenter);
         }
@@ -622,34 +944,30 @@ namespace Veil
             if (dragging) Location = new Point(Location.X + e.X - dragFrom.X, Location.Y + e.Y - dragFrom.Y);
         }
 
-        protected override void OnMouseUp(MouseEventArgs e)
-        {
-            dragging = false;
-            base.OnMouseUp(e);
-        }
+        protected override void OnMouseUp(MouseEventArgs e) { dragging = false; base.OnMouseUp(e); }
 
         void Toggle()
         {
             if (busy) return;
             if (proc != null && !proc.HasExited) { Stop(true); return; }
 
-            string server, sni, fp, psk;
-            if (!KeyCodec.TryParse(txtKey.Text, out server, out sni, out fp, out psk))
+            Profile p = Current;
+            if (p == null)
             {
-                MessageBox.Show("Ключ не распознан. Он должен начинаться с veil://", "veil");
-                return;
+                if (!string.IsNullOrEmpty(Clipboard.GetText())) { AddFromClipboard(true); p = Current; }
+                if (p == null) { MessageBox.Show("Добавь ключ: «＋ Добавить ключ из буфера».", "veil"); return; }
             }
+
             busy = true;
             btnGo.Enabled = false;
             card.Connecting = true;
-            card.Server = server;
+            card.Server = p.Server;
             card.Invalidate();
             Application.DoEvents();
 
             try
             {
-                File.WriteAllText(Engine.KeyPath, txtKey.Text.Trim());
-                Engine.WriteIni(server, sni, fp, psk);
+                Engine.WriteIni(p);
                 proc = Engine.StartClient();
                 if (!Engine.WaitListen(6000))
                 {
@@ -665,6 +983,20 @@ namespace Veil
                 btnGo.Text = "Отключиться";
                 tray.Text = "veil: подключено";
                 tray.ShowBalloonTip(1500, "veil", "Туннель поднят, прокси включён", ToolTipIcon.Info);
+                card.Invalidate();
+
+                Socks.LookupCountry(p, delegate(Profile done)
+                {
+                    BeginInvoke(new MethodInvoker(delegate
+                    {
+                        Store.Save(profiles);
+                        list.Invalidate();
+                        card.Cc = done.Cc;
+                        card.Country = done.Country;
+                        card.ExitIp = done.ExitIp;
+                        card.Invalidate();
+                    }));
+                });
             }
             catch (Exception ex)
             {
@@ -677,7 +1009,6 @@ namespace Veil
                 btnGo.Enabled = true;
                 btnGo.Invalidate();
                 card.Invalidate();
-                Invalidate();
             }
         }
 
@@ -689,7 +1020,6 @@ namespace Veil
             btnGo.Text = "Подключиться";
             card.Connected = false;
             card.Connecting = false;
-            card.Server = "не подключено";
             card.Invalidate();
             btnGo.Invalidate();
             tray.Text = "veil: отключено";
@@ -722,49 +1052,18 @@ namespace Veil
         public static int Run(string[] args)
         {
             if (args.Length < 2) { Console.WriteLine("usage: veil.exe --selftest <key>"); return 2; }
-            string server, sni, fp, psk;
-            if (!KeyCodec.TryParse(args[1], out server, out sni, out fp, out psk))
-            {
-                Console.WriteLine("key: FAIL"); return 3;
-            }
-            Console.WriteLine("key: ok server=" + server + " sni=" + sni + " fp=" + fp);
-            Engine.WriteIni(server, sni, fp, psk);
-            Process p = Engine.StartClient();
+            Profile p = KeyCodec.ToProfile(args[1]);
+            if (p == null) { Console.WriteLine("key: FAIL"); return 3; }
+            Console.WriteLine("key: ok server=" + p.Server + " sni=" + p.Sni + " fp=" + p.Fp);
+            Engine.WriteIni(p);
+            Process cl = Engine.StartClient();
             bool up = Engine.WaitListen(8000);
             Console.WriteLine("socks: " + (up ? "listening" : "FAIL"));
-            bool ok = up && TryFetch("example.com");
-            Console.WriteLine("fetch: " + (ok ? "ok" : "FAIL"));
-            try { p.Kill(); } catch { }
+            string body = up ? Socks.Get("ip-api.com", "/json/?fields=status,country,countryCode,query", 15000) : null;
+            bool ok = up && body != null && body.IndexOf("\"success\"", StringComparison.Ordinal) >= 0;
+            Console.WriteLine("exit: " + (body == null ? "FAIL" : body.Trim()));
+            try { cl.Kill(); } catch { }
             return (up && ok) ? 0 : 1;
-        }
-
-        static bool TryFetch(string host)
-        {
-            try
-            {
-                using (TcpClient c = new TcpClient())
-                {
-                    c.Connect("127.0.0.1", 1080);
-                    NetworkStream s = c.GetStream();
-                    s.Write(new byte[] { 5, 1, 0 }, 0, 3);
-                    byte[] r = new byte[2];
-                    if (s.Read(r, 0, 2) != 2 || r[0] != 5 || r[1] != 0) return false;
-                    byte[] hb = Encoding.ASCII.GetBytes(host);
-                    byte[] req = new byte[5 + hb.Length + 2];
-                    req[0] = 5; req[1] = 1; req[2] = 0; req[3] = 3; req[4] = (byte)hb.Length;
-                    Array.Copy(hb, 0, req, 5, hb.Length);
-                    req[5 + hb.Length] = 0; req[6 + hb.Length] = 80;
-                    s.Write(req, 0, req.Length);
-                    byte[] rep = new byte[10];
-                    if (s.Read(rep, 0, 10) < 2 || rep[1] != 0) return false;
-                    byte[] get = Encoding.ASCII.GetBytes("GET / HTTP/1.0\r\nHost: " + host + "\r\n\r\n");
-                    s.Write(get, 0, get.Length);
-                    byte[] buf = new byte[256];
-                    int n = s.Read(buf, 0, buf.Length);
-                    return n > 0 && Encoding.ASCII.GetString(buf, 0, Math.Min(n, 12)).StartsWith("HTTP/");
-                }
-            }
-            catch { return false; }
         }
     }
 }

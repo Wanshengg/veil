@@ -1,2 +1,7 @@
 [2026-11-22T05:19:20+0300] OK  tls=407ms tunnel=376ms 931B 
 [2026-11-22T05:24:23+0300] OK  tls=398ms tunnel=374ms 931B 
+[2026-11-22T05:29:25+0300] OK  tls=564ms tunnel=510ms 931B 
+[2026-11-22T05:34:27+0300] OK  tls=450ms tunnel=384ms 931B 
+[2026-11-22T05:39:30+0300] OK  tls=405ms tunnel=383ms 931B 
+[2026-11-22T05:44:32+0300] OK  tls=402ms tunnel=378ms 931B 
+[2026-11-22T05:49:35+0300] OK  tls=469ms tunnel=504ms 931B 
