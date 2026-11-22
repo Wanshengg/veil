@@ -46,6 +46,11 @@ namespace Veil
         public static readonly Font Big = new Font("Segoe UI Semibold", 13.5f);
         public static readonly Font Mono = new Font("Consolas", 8f);
         public static readonly Font Small = new Font("Segoe UI", 8.5f);
+        // glass
+        public static readonly Color Glass = Color.FromArgb(150, 32, 40, 54);
+        public static readonly Color GlassHi = Color.FromArgb(180, 44, 54, 72);
+        public static readonly Color GlassEdge = Color.FromArgb(46, 255, 255, 255);
+        public static readonly Color GlassText = Color.FromArgb(238, 244, 252);
     }
 
     static class Draw
@@ -68,8 +73,35 @@ namespace Veil
             g.SmoothingMode = SmoothingMode.AntiAlias;
             using (GraphicsPath p = Round(r, radius))
             {
-                using (SolidBrush b = new SolidBrush(fill)) g.FillPath(b, p);
+                Color top = Color.FromArgb(fill.A, Math.Min(255, fill.R + 14), Math.Min(255, fill.G + 16), Math.Min(255, fill.B + 20));
+                using (LinearGradientBrush b = new LinearGradientBrush(
+                    new Rectangle(r.X, r.Y, r.Width, Math.Max(2, r.Height)), top, fill, 90f))
+                    g.FillPath(b, p);
                 using (Pen pen = new Pen(border, 1f)) g.DrawPath(pen, p);
+            }
+        }
+
+        public static void Backdrop(Graphics g, int w, int h)
+        {
+            using (LinearGradientBrush b = new LinearGradientBrush(new Rectangle(0, 0, w, h),
+                Color.FromArgb(9, 12, 18), Color.FromArgb(19, 25, 36), 100f))
+                g.FillRectangle(b, 0, 0, w, h);
+            Radial(g, new Point(-40, -30), 300, Color.FromArgb(64, Theme.Accent));
+            Radial(g, new Point(w + 30, h + 40), 340, Color.FromArgb(56, Theme.Accent2));
+            Radial(g, new Point(w / 2, h / 2), 260, Color.FromArgb(22, 90, 160, 255));
+        }
+
+        static void Radial(Graphics g, Point c, int r, Color color)
+        {
+            using (GraphicsPath gp = new GraphicsPath())
+            {
+                gp.AddEllipse(c.X - r, c.Y - r, r * 2, r * 2);
+                using (PathGradientBrush pg = new PathGradientBrush(gp))
+                {
+                    pg.CenterColor = color;
+                    pg.SurroundColors = new Color[] { Color.FromArgb(0, color) };
+                    g.FillPath(pg, gp);
+                }
             }
         }
 
@@ -376,7 +408,8 @@ namespace Veil
                 "sni    = " + p.Sni + "\n" +
                 "psk    = " + p.Psk + "\n" +
                 "socks  = 127.0.0.1:1080\n" +
-                "fp     = " + p.Fp + "\n";
+                "fp     = " + p.Fp + "\n" +
+                "direct  = " + (Settings.DirectRu ? "true" : "false") + "\n";
             File.WriteAllText(IniPath, ini, new UTF8Encoding(false));
         }
 
@@ -540,7 +573,7 @@ namespace Veil
         {
             Graphics g = e.Graphics;
             g.Clear(Theme.Bg1);
-            Draw.Card(g, new Rectangle(0, 0, Width - 1, Height - 1), 14, Theme.Card, Theme.Line);
+            Draw.Card(g, new Rectangle(0, 0, Width - 1, Height - 1), 20, Theme.Glass, Theme.GlassEdge);
 
             Color c = Connected ? Theme.Ok : (Connecting ? Theme.Warn : Color.FromArgb(110, 122, 138));
             int alpha = (Connected || Connecting) ? (int)(90 + 90 * Math.Abs(Math.Sin(Pulse))) : 40;
@@ -641,7 +674,7 @@ namespace Veil
         {
             Graphics g = e.Graphics;
             g.Clear(Theme.Bg1);
-            Draw.Card(g, new Rectangle(0, 0, Width - 1, Height - 1), 14, Theme.Card, Theme.Line);
+            Draw.Card(g, new Rectangle(0, 0, Width - 1, Height - 1), 20, Theme.Glass, Theme.GlassEdge);
 
             if (Items.Count == 0)
             {
@@ -660,9 +693,9 @@ namespace Veil
                 bool sel = real == Selected, hov = real == hover;
 
                 if (sel)
-                    Draw.Card(g, row, 10, Color.FromArgb(32, 42, 58), Color.FromArgb(70, 96, 140));
+                    Draw.Card(g, row, 12, Color.FromArgb(170, 52, 74, 120), Color.FromArgb(110, 130, 190, 255));
                 else if (hov)
-                    Draw.Card(g, row, 10, Theme.CardHi, Theme.Line);
+                    Draw.Card(g, row, 12, Theme.GlassHi, Theme.GlassEdge);
 
                 if (sel)
                 {
@@ -706,6 +739,8 @@ namespace Veil
         readonly FlatButton btnAdd = new FlatButton();
         readonly FlatButton btnGo = new FlatButton();
         readonly FlatButton btnMin = new FlatButton();
+        readonly FlatButton btnSettings = new FlatButton();
+        readonly SettingsPanel setPanel = new SettingsPanel();
         readonly FlatButton btnClose = new FlatButton();
         readonly StatusCard card = new StatusCard();
         readonly Panel logWrap = new Panel();
@@ -715,7 +750,7 @@ namespace Veil
         readonly System.Windows.Forms.Timer ui = new System.Windows.Forms.Timer();
         readonly List<Profile> profiles = new List<Profile>();
         Process proc;
-        bool busy, autoConnect;
+        bool busy, autoConnect, openSettings;
         bool dragging;
         Point dragFrom;
 
@@ -725,6 +760,7 @@ namespace Veil
         public MainForm(string[] args)
         {
             autoConnect = Array.IndexOf(args, "--connect") >= 0;
+            openSettings = Array.IndexOf(args, "--settings") >= 0;
             FormBorderStyle = FormBorderStyle.None;
             ClientSize = new Size(W, H);
             StartPosition = FormStartPosition.CenterScreen;
@@ -732,6 +768,15 @@ namespace Veil
             DoubleBuffered = true;
             Font = Theme.UI;
             Text = "veil";
+
+            btnSettings.Text = "⚙"; btnSettings.Primary = false; btnSettings.SetBounds(W - 136, 10, 34, 28);
+            btnSettings.Click += delegate
+            {
+                setPanel.Visible = !setPanel.Visible;
+                setPanel.BringToFront();
+                if (setPanel.Visible) setPanel.Refresh();
+            };
+            Controls.Add(btnSettings);
 
             btnMin.Text = "—"; btnMin.Primary = false; btnMin.SetBounds(W - 96, 10, 34, 28);
             btnClose.Text = "✕"; btnClose.Primary = false; btnClose.SetBounds(W - 56, 10, 34, 28);
@@ -779,8 +824,8 @@ namespace Veil
             logWrap.Paint += delegate(object s, PaintEventArgs e)
             {
                 e.Graphics.Clear(Theme.Bg1);
-                Draw.Card(e.Graphics, new Rectangle(0, 0, logWrap.Width - 1, logWrap.Height - 1), 12,
-                    Color.FromArgb(15, 20, 28), Theme.Line);
+                Draw.Card(e.Graphics, new Rectangle(0, 0, logWrap.Width - 1, logWrap.Height - 1), 18,
+                    Color.FromArgb(150, 14, 18, 26), Theme.GlassEdge);
             };
             Controls.Add(logWrap);
 
@@ -805,6 +850,15 @@ namespace Veil
             logHint.BringToFront();
             txtLog.TextChanged += delegate { logHint.Visible = txtLog.Text.Length == 0; };
 
+            setPanel.SetBounds(20, 158, W - 40, 360);
+            setPanel.Visible = false;
+            setPanel.Closed += delegate
+            {
+                setPanel.Visible = false;
+                if (proc != null && !proc.HasExited) ApplyRouting();
+            };
+            Controls.Add(setPanel);
+
             tray.Text = "veil";
             tray.Icon = SystemIcons.Shield;
             tray.Visible = true;
@@ -815,6 +869,8 @@ namespace Veil
             cm.Items.Add("Выход", null, delegate { Close(); });
             tray.ContextMenuStrip = cm;
 
+            Settings.Load();
+            setPanel.SwRoute.On = Settings.DirectRu;
             profiles.AddRange(Store.Load());
             list.SetItems(profiles, profiles.Count > 0 ? 0 : -1);
             ShowCurrent();
@@ -838,6 +894,11 @@ namespace Veil
         {
             base.OnShown(e);
             if (autoConnect && profiles.Count > 0) BeginInvoke(new MethodInvoker(delegate { Toggle(); }));
+            if (openSettings) BeginInvoke(new MethodInvoker(delegate
+            {
+                setPanel.Visible = true;
+                setPanel.BringToFront();
+            }));
         }
 
         protected override CreateParams CreateParams
@@ -851,6 +912,16 @@ namespace Veil
         }
 
         void Restore() { Show(); WindowState = FormWindowState.Normal; Activate(); }
+
+        // Routing switch changed in settings: reconnect so the new rules apply.
+        public void ApplyRouting()
+        {
+            if (proc != null && !proc.HasExited)
+            {
+                Stop(true);
+                Toggle();
+            }
+        }
 
         Profile Current
         {
@@ -909,8 +980,7 @@ namespace Veil
 
         protected override void OnPaint(PaintEventArgs e)
         {
-            using (LinearGradientBrush b = new LinearGradientBrush(new Rectangle(0, 0, W, H), Theme.Bg1, Theme.Bg2, 90f))
-                e.Graphics.FillRectangle(b, 0, 0, W, H);
+            Draw.Backdrop(e.Graphics, W, H);
 
             Rectangle logo = new Rectangle(20, 12, 26, 26);
             using (GraphicsPath lp = Draw.Round(logo, 8))
@@ -1044,6 +1114,148 @@ namespace Veil
                 card.Server = "клиент завершился";
                 card.Invalidate();
             }
+        }
+    }
+
+
+    static class Settings
+    {
+        static string File2 { get { return System.IO.Path.Combine(Engine.Dir, "settings.ini"); } }
+
+        public static bool DirectRu = true;
+        public static bool Tun = false;
+
+        public static void Load()
+        {
+            try
+            {
+                if (!File.Exists(File2)) return;
+                foreach (string l in File.ReadAllLines(File2))
+                {
+                    string[] kv = l.Split('=');
+                    if (kv.Length != 2) continue;
+                    string k = kv[0].Trim(), v = kv[1].Trim();
+                    if (k == "direct") DirectRu = v != "0";
+                    if (k == "tun") Tun = v != "0";
+                }
+            }
+            catch { }
+        }
+
+        public static void Save()
+        {
+            try { File.WriteAllText(File2, "direct=" + (DirectRu ? "1" : "0") + "\ntun=" + (Tun ? "1" : "0") + "\n"); }
+            catch { }
+        }
+    }
+
+    class GlassSwitch : Control
+    {
+        public bool On;
+        public bool Disabled;
+        public event EventHandler Toggled;
+
+        public GlassSwitch()
+        {
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint, true);
+            BackColor = Theme.Bg1;
+            Size = new Size(46, 26);
+            Cursor = Cursors.Hand;
+        }
+
+        protected override void OnClick(EventArgs e)
+        {
+            if (Disabled) return;
+            On = !On;
+            Invalidate();
+            if (Toggled != null) Toggled(this, EventArgs.Empty);
+            base.OnClick(e);
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            Graphics g = e.Graphics;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.Clear(BackColor);
+            Rectangle track = new Rectangle(0, 2, Width - 1, Height - 5);
+            Color on = Disabled ? Color.FromArgb(52, 62, 78) : Theme.Ok;
+            Color off = Color.FromArgb(58, 68, 84);
+            using (GraphicsPath p = Draw.Round(track, track.Height / 2))
+            using (LinearGradientBrush b = new LinearGradientBrush(track,
+                On ? on : off, On ? ControlPaint.Dark(on, 0.25f) : off, 90f))
+                g.FillPath(b, p);
+            int knob = track.Height - 6;
+            int kx = On ? track.Right - knob - 3 : track.X + 3;
+            using (SolidBrush b = new SolidBrush(Disabled ? Color.FromArgb(150, 230, 236, 245) : Color.White))
+                g.FillEllipse(b, kx, track.Y + 3, knob, knob);
+        }
+    }
+
+    class SettingsPanel : Panel
+    {
+        public readonly GlassSwitch SwRoute = new GlassSwitch();
+        public readonly GlassSwitch SwTun = new GlassSwitch();
+        public event EventHandler Closed;
+        Rectangle back = new Rectangle(0, 0, 10, 10);
+
+        public SettingsPanel()
+        {
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint, true);
+            BackColor = Theme.Bg1;
+            SwRoute.On = Settings.DirectRu;
+            SwTun.On = Settings.Tun;
+            SwTun.Disabled = true;
+            SwRoute.Toggled += delegate
+            {
+                Settings.DirectRu = SwRoute.On;
+                Settings.Save();
+                if (Closed != null) Closed(this, EventArgs.Empty);
+            };
+            Controls.Add(SwRoute);
+            Controls.Add(SwTun);
+        }
+
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            if (back.Contains(e.Location) && Closed != null) Closed(this, EventArgs.Empty);
+            base.OnMouseDown(e);
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            Graphics g = e.Graphics;
+            g.Clear(Theme.Bg1);
+            Draw.Card(g, new Rectangle(0, 0, Width - 1, Height - 1), 20, Color.FromArgb(246, 18, 23, 33), Theme.GlassEdge);
+
+            TextRenderer.DrawText(g, "Настройки", Theme.Title, new Rectangle(22, 16, 200, 24), Theme.Text,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
+            back = new Rectangle(Width - 96, 16, 76, 24);
+            TextRenderer.DrawText(g, "назад  ›", Theme.UI, back, Theme.Accent,
+                TextFormatFlags.Right | TextFormatFlags.VerticalCenter);
+
+            int y = 56;
+            Draw.Card(g, new Rectangle(16, y, Width - 32, 72), 16, Theme.Glass, Theme.GlassEdge);
+            TextRenderer.DrawText(g, "Российские сайты напрямую", Theme.UIBold, new Rectangle(32, y + 12, Width - 130, 20),
+                Theme.GlassText, TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
+            TextRenderer.DrawText(g, "яндекс, госуслуги, банки, .ru — без туннеля", Theme.Small,
+                new Rectangle(32, y + 34, Width - 120, 18), Theme.Muted,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
+            SwRoute.SetBounds(Width - 74, y + 22, 46, 26);
+
+            y = 140;
+            Draw.Card(g, new Rectangle(16, y, Width - 32, 96), 16, Color.FromArgb(110, 34, 42, 58), Theme.GlassEdge);
+            TextRenderer.DrawText(g, "TUN-режим", Theme.UIBold, new Rectangle(32, y + 12, Width - 130, 20),
+                Color.FromArgb(150, 165, 182), TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
+            TextRenderer.DrawText(g, "весь трафик ОС, игры, UDP", Theme.Small, new Rectangle(32, y + 34, Width - 120, 18),
+                Theme.Muted, TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
+            TextRenderer.DrawText(g, "нужен wintun + права администратора", Theme.Small,
+                new Rectangle(32, y + 54, Width - 60, 18), Color.FromArgb(206, 168, 96),
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
+            SwTun.SetBounds(Width - 74, y + 22, 46, 26);
+
+            TextRenderer.DrawText(g, "маршрутизация применится при следующем подключении", Theme.Small,
+                new Rectangle(22, Height - 34, Width - 44, 18), Color.FromArgb(104, 116, 134),
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
         }
     }
 

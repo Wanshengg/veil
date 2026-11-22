@@ -19,6 +19,7 @@ import (
 
 	utls "github.com/refraction-networking/utls"
 	"veil/internal/proto"
+	"veil/internal/rules"
 )
 
 type bufConn struct {
@@ -36,6 +37,8 @@ func main() {
 	insecure := flag.Bool("insecure", false, "skip certificate verification (self-signed tests only)")
 	fp := flag.String("fp", "chrome", "TLS fingerprint: chrome|firefox|safari|edge|random")
 	probe := flag.String("probe-hello", "", "dial this address with the utls fingerprint, then exit (self-check)")
+	direct := flag.Bool("direct", true, "send Russian/local destinations straight to the internet (no tunnel)")
+	rulesFile := flag.String("rules", "", "extra direct-rule file: domains or CIDRs, one per line")
 	cfgPath := flag.String("config", "", "optional key=value config file (flags win)")
 	flag.Parse()
 	applyConfig(*cfgPath)
@@ -65,6 +68,8 @@ func main() {
 		return
 	}
 
+	rl := rules.NewRules(*direct, *rulesFile)
+
 	ln, err := net.Listen("tcp", *socksAddr)
 	if err != nil {
 		log.Fatalf("veil-client: listen: %v", err)
@@ -77,7 +82,7 @@ func main() {
 			log.Printf("accept: %v", err)
 			continue
 		}
-		go handleSocks(c, *server, sniName, key, *insecure, *fp)
+		go handleSocks(c, *server, sniName, key, *insecure, *fp, rl)
 	}
 }
 
@@ -109,6 +114,32 @@ func applyConfig(path string) {
 			log.Fatalf("veil-client: config %q: %v", k, err)
 		}
 	}
+}
+
+// relayPlain splices two plain TCP connections (direct mode).
+func relayPlain(a, b net.Conn) {
+	done := make(chan struct{}, 2)
+	cp := func(dst, src net.Conn) {
+		buf := make([]byte, 32*1024)
+		for {
+			n, err := src.Read(buf)
+			if n > 0 {
+				if _, werr := dst.Write(buf[:n]); werr != nil {
+					break
+				}
+			}
+			if err != nil {
+				break
+			}
+		}
+		done <- struct{}{}
+	}
+	go cp(b, a)
+	go cp(a, b)
+	<-done
+	a.Close()
+	b.Close()
+	<-done
 }
 
 func helloID(name string) (utls.ClientHelloID, error) {
@@ -151,7 +182,7 @@ func dialTunnel(server, sni string, insecure bool, fp string) (*utls.UConn, erro
 	return uc, nil
 }
 
-func handleSocks(c net.Conn, server, sni string, key []byte, insecure bool, fp string) {
+func handleSocks(c net.Conn, server, sni string, key []byte, insecure bool, fp string, rl *rules.Rules) {
 	br := bufio.NewReader(c)
 	defer c.Close()
 
@@ -210,6 +241,22 @@ func handleSocks(c net.Conn, server, sni string, key []byte, insecure bool, fp s
 		return
 	}
 	target := net.JoinHostPort(host, strconv.Itoa(int(binary.BigEndian.Uint16(pb[:]))))
+
+	if rl != nil && rl.Direct(target) {
+		up, derr := net.DialTimeout("tcp", target, 10*time.Second)
+		if derr != nil {
+			log.Printf("direct %s: %v", target, derr)
+			c.Write([]byte{5, 5, 0, 1, 0, 0, 0, 0, 0, 0})
+			return
+		}
+		defer up.Close()
+		if _, err := c.Write([]byte{5, 0, 0, 1, 0, 0, 0, 0, 0, 0}); err != nil {
+			return
+		}
+		log.Printf("direct -> %s", target)
+		relayPlain(bufConn{Conn: c, r: br}, up)
+		return
+	}
 
 	uc, err := dialTunnel(server, sni, insecure, fp)
 	if err != nil {
