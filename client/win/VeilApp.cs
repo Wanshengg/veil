@@ -134,6 +134,11 @@ namespace Veil
                 string[] f = line.Split('\t');
                 Profile p = Codec.ToProfile(f[0]);
                 if (p == null) continue;
+                string host0 = p.Server;
+                int c0 = host0.LastIndexOf(':');
+                if (c0 > 0) host0 = host0.Substring(0, c0);
+                System.Net.IPAddress ip0;
+                if (System.Net.IPAddress.TryParse(host0, out ip0)) continue; // ключи по IP больше не нужны
                 if (f.Length > 1) p.Cc = f[1];
                 if (f.Length > 2) p.Country = f[2];
                 if (f.Length > 3) p.ExitIp = f[3];
@@ -749,6 +754,14 @@ namespace Veil
                     probeTimer.Start();
                     Program.Log("step: navigate done");
 
+                    bool pasteKey = false;
+                    foreach (string a0 in Environment.GetCommandLineArgs()) if (a0 == "--paste-key") pasteKey = true;
+                    if (pasteKey)
+                    {
+                        try { AddKeyFromText(Clipboard.ContainsText() ? Clipboard.GetText() : ""); }
+                        catch (Exception ex) { Program.Log("paste-key: " + ex.Message); }
+                    }
+
                     if (autoConnect)
                     {
                         System.Windows.Forms.Timer t = new System.Windows.Forms.Timer();
@@ -811,6 +824,13 @@ namespace Veil
                 if (core.State == "connected") { core.Kill(); ThreadPool.QueueUserWorkItem(delegate { core.OpenTunnel(); BeginInvoke(new MethodInvoker(Push)); }); }
             }
             else if (cmd == "fav") { }
+            else if (cmd == "key-paste")
+            {
+                string txt = "";
+                try { if (Clipboard.ContainsText()) txt = Clipboard.GetText(); } catch { }
+                AddKeyFromText(txt);
+            }
+            else if (cmd == "key-add") { AddKeyFromText(Json(raw, "key")); }
             else if (cmd == "app-add")
             {
                 using (OpenFileDialog dlg = new OpenFileDialog())
@@ -925,6 +945,35 @@ namespace Veil
             catch (Exception ex) { Program.Log("push failed: " + ex.Message); }
         }
 
+        string keyMsg = "";
+
+        // ключи только с доменом: адрес по IP больше не принимаем
+        void AddKeyFromText(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text) || text.IndexOf("veil://", StringComparison.OrdinalIgnoreCase) < 0)
+            { keyMsg = "В буфере нет ключа veil://"; Push(); return; }
+
+            Profile p = Codec.ToProfile(text);
+            if (p == null) { keyMsg = "Ключ не распознан — проверь, что скопирован целиком"; Push(); return; }
+
+            string host = p.Server;
+            int colon = host.LastIndexOf(':');
+            if (colon > 0) host = host.Substring(0, colon);
+            IPAddress ip;
+            if (IPAddress.TryParse(host, out ip))
+            { keyMsg = "Ключи по IP не поддерживаются — нужен домен"; Push(); return; }
+
+            foreach (Profile x in core.Profiles)
+                if (string.Equals(x.Server, p.Server, StringComparison.OrdinalIgnoreCase))
+                { keyMsg = "Этот ключ уже добавлен"; Push(); return; }
+
+            core.Profiles.Add(p);
+            core.Selected = core.Profiles.Count - 1;
+            Store.Save(core.Profiles);
+            keyMsg = "Добавлено: " + p.Server;
+            Push();
+        }
+
         string BuildSnapshot()
         {
             StringBuilder sb = new StringBuilder();
@@ -969,6 +1018,7 @@ namespace Veil
                   .Append(",\"on\":").Append(apps[i].On ? "true" : "false").Append("}");
             }
             sb.Append("]");
+            sb.Append(",\"keyMsg\":\"").Append(Esc(keyMsg)).Append("\"");
             sb.Append(",\"error\":\"").Append(Esc(core.State == "error" ? "Клиент не поднялся, смотри лог" : "")).Append("\"");
             sb.Append("}}");
             return sb.ToString();

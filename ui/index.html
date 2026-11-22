@@ -34,6 +34,10 @@
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 4v5c0 4.2-2.9 7.6-7 9-4.1-1.4-7-4.8-7-9V7l7-4z"/></svg>
       Главная
     </button>
+    <button class="tab" role="tab" data-tab="add" aria-selected="false">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+      Ключ
+    </button>
     <button class="tab" role="tab" data-tab="settings" aria-selected="false">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 00-.1-1.2l2-1.5-2-3.4-2.3 1a7 7 0 00-2-1.2L14.2 3H9.8l-.4 2.7a7 7 0 00-2 1.2l-2.3-1-2 3.4 2 1.5A7 7 0 005 12c0 .4 0 .8.1 1.2l-2 1.5 2 3.4 2.3-1a7 7 0 002 1.2l.4 2.7h4.4l.4-2.7a7 7 0 002-1.2l2.3 1 2-3.4-2-1.5c.1-.4.1-.8.1-1.2z"/></svg>
       Настройки
@@ -77,6 +81,8 @@
     appToggle: (path) => post({ cmd: "app-toggle", path }),
     appRun: (path) => post({ cmd: "app-run", path }),
     appDel: (path) => post({ cmd: "app-del", path }),
+    keyPaste: () => post({ cmd: "key-paste" }),
+    keyAdd: (key) => post({ cmd: "key-add", key }),
   };
   if (window.VEIL_UI) window.VEIL_UI.setAdapter(host);
 })();

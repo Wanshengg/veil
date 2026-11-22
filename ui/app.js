@@ -103,6 +103,8 @@
       appToggle(path) { const a = snap.apps.find((x) => x.path === path); if (a) a.on = !a.on; emit(); },
       appRun(name) { alert("В макете приложение «" + name + "» запускается через прокси"); },
       appDel(path) { snap.apps = snap.apps.filter((x) => x.path !== path); emit(); },
+      keyPaste() { snap.keyMsg = "Макет: ключ из буфера не читается"; emit(); },
+      keyAdd() { snap.keyMsg = "Макет: ключ не добавляется"; emit(); },
       refresh() { emit(); },
     };
     return api;
@@ -252,6 +254,36 @@
       </section>`;
     },
 
+    add(snap) {
+      const msg = snap.keyMsg || "";
+      const err = /нет ключа|не распознан|не поддерживаются|уже добавлен/i.test(msg);
+      return `
+      <section class="add">
+        <div class="add-head">
+          <div class="title">Соединение</div>
+          <div class="faint">Вставь ключ <b>veil://</b> — он появится на главной плиткой.
+            QR-кодов и файлов нет, только буфер обмена.</div>
+        </div>
+
+        <div class="paste-row">
+          <input id="keyInput" type="text" placeholder="Вставить ключ" spellcheck="false"
+                 aria-label="Ключ подключения" autocomplete="off">
+          <button class="btn primary" data-action="key-paste">Вставить</button>
+        </div>
+
+        <div class="paste-msg ${err ? "is-error" : msg ? "is-ok" : ""}" role="status" aria-live="polite">${esc(msg)}</div>
+
+        <div class="add-hint">
+          <div class="caps">Как это работает</div>
+          <div class="faint">
+            Скопируй ключ (он начинается с <code>veil://</code>) и нажми «Вставить».
+            Можно вставить ключ в поле вручную и нажать Enter — результат тот же.
+            Ключи по IP-адресу не принимаются: нужен домен, иначе маскировка под TLS ломается.
+          </div>
+        </div>
+      </section>`;
+    },
+
     settings(snap) {
       const s = snap.settings;
       const row = (title, sub, control) => `
@@ -329,7 +361,9 @@
     if (badgeHost) badgeHost.innerHTML = comp.badge(snap.state);
 
     const view = $("#view");
-    view.innerHTML = state.tab === "settings" ? views.settings(snap) : views.home(snap, servers);
+    view.innerHTML = state.tab === "settings" ? views.settings(snap)
+      : state.tab === "add" ? views.add(snap)
+      : views.home(snap, servers);
 
     document.querySelectorAll(".tab").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.tab === state.tab)));
     if (state.tab === "home") decorateHero();
@@ -382,7 +416,8 @@
     else if (a === "set-autostart") adapter.setSetting("autostart", !snap.settings.autostart);
     else if (a === "set-split") adapter.setSetting("split", !snap.settings.split);
     else if (a === "set-tun") adapter.setSetting("tun", !snap.settings.tun);
-    else if (a === "add-key") toast("Вставь ключ veil:// из буфера — сервер появится в списке", "ok");
+    else if (a === "add-key") { state.tab = "add"; render(); }
+    else if (a === "key-paste") adapter.keyPaste();
     else if (a === "app-add") adapter.appAdd();
     else if (a === "app-run") adapter.appRun(action.dataset.path);
     else if (a === "sheet-rules") openSheet("Исключения маршрутизации", rulesSheet());
@@ -400,6 +435,11 @@
 
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") closeSheet();
+    if (e.key === "Enter" && e.target && e.target.id === "keyInput") {
+      e.preventDefault();
+      const v = e.target.value.trim();
+      if (v) adapter.keyAdd(v);
+    }
     if (e.key === "Enter" || e.key === " ") {
       const row = e.target.closest("[data-server]");
       if (row) { e.preventDefault(); adapter.selectServer(row.dataset.server); }
