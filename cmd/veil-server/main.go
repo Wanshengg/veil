@@ -6,6 +6,8 @@ package main
 import (
 	"bufio"
 	"crypto/sha256"
+	"strconv"
+	"sync"
 	"crypto/tls"
 	"flag"
 	"io"
@@ -80,6 +82,12 @@ func handle(c net.Conn, key []byte, rp *proto.ReplayCache, fallback string) {
 		return
 	}
 
+	if target == "udp" {
+		log.Printf("%s: udp relay", c.RemoteAddr())
+		relayUDP(br, c, out, in)
+		return
+	}
+
 	up, derr := net.DialTimeout("tcp", target, 10*time.Second)
 	if derr != nil {
 		log.Printf("%s: dial %s: %v", c.RemoteAddr(), target, derr)
@@ -109,6 +117,51 @@ func proxyTo(c net.Conn, br *bufio.Reader, dst string) {
 	go func() { io.Copy(c, up); halfClose(c); done <- struct{}{} }()
 	<-done
 	<-done
+}
+
+// relayUDP пересылает датаграмы из туннеля в интернет и обратно.
+func relayUDP(br *bufio.Reader, w io.Writer, keyOut, keyIn []byte) {
+	conns := make(map[string]*net.UDPConn)
+	var wmu sync.Mutex
+
+	for {
+		p, err := proto.ReadFrame(br, keyIn)
+		if err != nil {
+			return
+		}
+		host, port, data, err := proto.UnpackUDP(p)
+		if err != nil {
+			continue
+		}
+		key := net.JoinHostPort(host, strconv.Itoa(port))
+		uc := conns[key]
+		if uc == nil {
+			addr, rerr := net.ResolveUDPAddr("udp", key)
+			if rerr != nil {
+				continue
+			}
+			uc, rerr = net.DialUDP("udp", nil, addr)
+			if rerr != nil {
+				continue
+			}
+			conns[key] = uc
+			go func(uc *net.UDPConn, host string, port int) {
+				buf := make([]byte, 65535)
+				for {
+					n, _, rerr := uc.ReadFrom(buf)
+					if rerr != nil {
+						return
+					}
+					wmu.Lock()
+					proto.WriteFrame(w, keyOut, proto.PackUDP(host, port, buf[:n]))
+					wmu.Unlock()
+				}
+			}(uc, host, port)
+		}
+		if _, werr := uc.Write(data); werr != nil {
+			continue
+		}
+	}
 }
 
 func halfClose(c net.Conn) {

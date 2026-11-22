@@ -346,7 +346,7 @@ func handleSocks5(conn net.Conn, br *bufio.Reader, c *cfg) {
 	if _, err := io.ReadFull(br, r[:]); err != nil {
 		return
 	}
-	if r[1] != 1 {
+	if r[1] != 1 && r[1] != 3 {
 		conn.Write([]byte{5, 7, 0, 1, 0, 0, 0, 0, 0, 0})
 		return
 	}
@@ -383,6 +383,10 @@ func handleSocks5(conn net.Conn, br *bufio.Reader, c *cfg) {
 		return
 	}
 	target := net.JoinHostPort(host, strconv.Itoa(int(binary.BigEndian.Uint16(pb[:]))))
+	if r[1] == 3 {
+		udpAssociate(conn, c)
+		return
+	}
 	if _, err := conn.Write([]byte{5, 0, 0, 1, 0, 0, 0, 0, 0, 0}); err != nil {
 		return
 	}
@@ -567,6 +571,121 @@ func readRequest(br *bufio.Reader) (*request, error) {
 		}
 	}
 	return r, nil
+}
+
+
+// ── UDP ASSOCIATE ────────────────────────────────────────────────────────
+
+func udpAssociate(conn net.Conn, c *cfg) {
+	pc, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	if err != nil {
+		conn.Write([]byte{5, 1, 0, 1, 0, 0, 0, 0, 0, 0})
+		return
+	}
+	defer pc.Close()
+	port := pc.LocalAddr().(*net.UDPAddr).Port
+	conn.Write([]byte{5, 0, 0, 1, 127, 0, 0, 1, byte(port >> 8), byte(port)})
+
+	uc, outKey, inKey, fp, err := openTunnel(c, "udp")
+	if err != nil {
+		log.Printf("udp associate: %v", err)
+		return
+	}
+	defer uc.Close()
+	log.Printf("udp associate -> %s (fp=%s)", c.server, fp)
+
+	var mu sync.Mutex
+	var client *net.UDPAddr
+	go func() {
+		for {
+			payload, rerr := proto.ReadFrame(uc, inKey)
+			if rerr != nil {
+				pc.Close()
+				return
+			}
+			host, dport, data, perr := proto.UnpackUDP(payload)
+			if perr != nil {
+				continue
+			}
+			mu.Lock()
+			a := client
+			mu.Unlock()
+			if a == nil {
+				continue
+			}
+			pc.WriteToUDP(socksUDPPacket(host, dport, data), a)
+		}
+	}()
+
+	buf := make([]byte, 65535)
+	for {
+		n, addr, rerr := pc.ReadFromUDP(buf)
+		if rerr != nil {
+			return
+		}
+		mu.Lock()
+		client = addr
+		mu.Unlock()
+		host, dport, data, perr := parseSocksUDP(buf[:n])
+		if perr != nil {
+			continue
+		}
+		if werr := proto.WriteFrame(uc, outKey, proto.PackUDP(host, dport, data)); werr != nil {
+			return
+		}
+	}
+}
+
+func socksUDPPacket(host string, port int, data []byte) []byte {
+	var b []byte
+	if ip := net.ParseIP(host); ip != nil {
+		if ip4 := ip.To4(); ip4 != nil {
+			b = append([]byte{0, 0, 0, 1}, ip4...)
+		} else {
+			b = append([]byte{0, 0, 0, 4}, ip.To16()...)
+		}
+	} else {
+		b = append([]byte{0, 0, 0, 3, byte(len(host))}, host...)
+	}
+	b = append(b, byte(port>>8), byte(port))
+	return append(b, data...)
+}
+
+func parseSocksUDP(b []byte) (host string, port int, data []byte, err error) {
+	if len(b) < 5 {
+		return "", 0, nil, fmt.Errorf("short udp packet")
+	}
+	atyp, p := b[3], 4
+	switch atyp {
+	case 1:
+		if len(b) < p+4+2 {
+			return "", 0, nil, fmt.Errorf("short ipv4")
+		}
+		host = net.IP(b[p : p+4]).String()
+		p += 4
+	case 4:
+		if len(b) < p+16+2 {
+			return "", 0, nil, fmt.Errorf("short ipv6")
+		}
+		host = "[" + net.IP(b[p:p+16]).String() + "]"
+		p += 16
+	case 3:
+		if len(b) < p+1 {
+			return "", 0, nil, fmt.Errorf("short domain")
+		}
+		l := int(b[p])
+		p++
+		if len(b) < p+l+2 {
+			return "", 0, nil, fmt.Errorf("short domain body")
+		}
+		host = string(b[p : p+l])
+		p += l
+	default:
+		return "", 0, nil, fmt.Errorf("bad atyp %d", atyp)
+	}
+	port = int(binary.BigEndian.Uint16(b[p : p+2]))
+	p += 2
+	return host, port, b[p:], nil
 }
 
 // relayPlain splices two plain TCP connections (direct mode).
