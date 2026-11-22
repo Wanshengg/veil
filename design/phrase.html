@@ -1,0 +1,458 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Фраза — прототип</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com/3.4.16"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          bg:     '#F6F4EF',
+          ink:    '#16181D',
+          sec:    '#6E7076',
+          rule:   '#E4E1D9',
+          accent: '#1E6B4F',
+          danger: '#B3261E',
+          mute:   '#B9B6AE'
+        },
+        fontFamily: {
+          sans: ['Golos Text', 'system-ui', 'sans-serif'],
+          mono: ['IBM Plex Mono', 'ui-monospace', 'SFMono-Regular', 'monospace']
+        }
+      }
+    }
+  }
+</script>
+<style>
+  html, body { height: 100%; }
+  body {
+    background: #F6F4EF;
+    color: #16181D;
+    -webkit-font-smoothing: antialiased;
+    font-variant-numeric: tabular-nums;
+  }
+  :focus-visible { outline: 2px solid #1E6B4F; outline-offset: 2px; border-radius: 2px; }
+  .ui-fade { animation: ui-fade 120ms ease-out both; }
+  @keyframes ui-fade { from { opacity: 0 } to { opacity: 1 } }
+  .sheet-in { animation: sheet-in 180ms ease-out both; }
+  @keyframes sheet-in { from { transform: translateY(8px); opacity: 0 } to { transform: none; opacity: 1 } }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { scrollbar-width: none; }
+  @media (prefers-reduced-motion: reduce) {
+    .ui-fade, .sheet-in { animation: none !important; }
+    * { transition: none !important; }
+  }
+</style>
+</head>
+<body class="bg-bg">
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useRef, useCallback } = React;
+
+/* ─────────────────────────── данные ─────────────────────────── */
+
+const CITIES = [
+  { id: 'ams', name: 'Амстердам', to: 'Амстердаму', in: 'Амстердаме', country: 'Нидерланды', ping: 34 },
+  { id: 'rtm', name: 'Роттердам', to: 'Роттердаму', in: 'Роттердаме', country: 'Нидерланды', ping: 37 },
+  { id: 'fra', name: 'Франкфурт', to: 'Франкфурту', in: 'Франкфурте', country: 'Германия', ping: 28 },
+  { id: 'ber', name: 'Берлин',    to: 'Берлину',   in: 'Берлине',   country: 'Германия', ping: 31 },
+  { id: 'muc', name: 'Мюнхен',    to: 'Мюнхену',   in: 'Мюнхене',   country: 'Германия', ping: 33 },
+  { id: 'hel', name: 'Хельсинки', to: 'Хельсинки', in: 'Хельсинки', country: 'Финляндия', ping: 41 },
+  { id: 'sto', name: 'Стокгольм', to: 'Стокгольму', in: 'Стокгольме', country: 'Швеция', ping: 48 },
+  { id: 'ist', name: 'Стамбул',   to: 'Стамбулу',  in: 'Стамбуле',  country: 'Турция',  ping: 52 }
+];
+
+const RECENTS = ['ams', 'fra'];
+const STAGES = ['Ключи', 'Рукопожатие', 'Маршрут'];
+const EXIT_IP = '185.42.113.7';
+const LAST = 'Последнее: Амстердам, 2 часа назад';
+
+const byId = (id) => CITIES.find((c) => c.id === id) || CITIES[0];
+
+/* ─────────────────────────── атомы ─────────────────────────── */
+
+// Подчёркнутое слово внутри фразы: 1px, тушь 30%, отступ 4px
+const phraseWord = {
+  textDecorationLine: 'underline',
+  textDecorationThickness: '1px',
+  textDecorationColor: 'rgba(22,24,29,0.30)',
+  textUnderlineOffset: '4px'
+};
+
+function Phrase({ children, keyProp }) {
+  return (
+    <h1
+      key={keyProp}
+      className="ui-fade text-[36px] font-medium leading-[1.15] tracking-[-0.01em] text-ink"
+      aria-live="polite"
+    >
+      {children}
+    </h1>
+  );
+}
+
+function Facts({ children, dot }) {
+  return (
+    <div className="mt-4 flex items-center gap-2 font-mono text-[13px] text-sec">
+      {dot ? <span aria-hidden="true" className="inline-block h-2 w-2 rounded-full bg-accent" /> : null}
+      <span>{children}</span>
+    </div>
+  );
+}
+
+function Button({ variant = 'filled', children, ...rest }) {
+  const base = 'flex h-14 w-full items-center justify-start rounded-[12px] pl-5 text-left text-[17px] font-medium transition-colors duration-150 ease-out';
+  const look = {
+    filled:  'bg-ink text-white',
+    outline: 'border border-ink text-ink bg-transparent',
+    danger:  'bg-[#B3261E] text-white'
+  }[variant];
+  return (
+    <button type="button" className={base + ' ' + look} {...rest}>
+      {children}
+    </button>
+  );
+}
+
+function Chevron() {
+  return <span aria-hidden="true" className="ml-1 align-[0.06em] text-[0.62em] text-sec">▾</span>;
+}
+
+/* ─────────────────────────── экран 1: главный ─────────────────────────── */
+
+function MainScreen({ state, stage, city, seconds, onPrimary, onOpenCities, onSettings }) {
+  const c = byId(city);
+
+  const phrase = {
+    off:          <>Интернет открыт.</>,
+    connecting:   <>Подключаемся к&nbsp;<button className="text-left" style={phraseWord} onClick={onOpenCities}>{c.to}</button>…</>,
+    on:           <>Вы в<br /><button className="text-left" style={phraseWord} onClick={onOpenCities}>{c.in}</button><Chevron /></>,
+    reconnecting: <>Восстанавливаем связь…</>,
+    error:        <>Не удалось подключиться.</>
+  }[state];
+
+  const facts = {
+    off:          LAST,
+    connecting:   STAGES[stage],
+    on:           `${EXIT_IP} · ${c.ping} мс · ${seconds < 60 ? seconds + ' с' : Math.floor(seconds / 60) + ' мин'}`,
+    reconnecting: 'Повторное рукопожатие',
+    error:        ''
+  }[state];
+
+  const primary = {
+    off:          { label: 'Подключиться',      variant: 'filled'  },
+    connecting:   { label: 'Отмена',            variant: 'outline' },
+    on:           { label: 'Отключиться',       variant: 'outline' },
+    reconnecting: { label: 'Отмена',            variant: 'outline' },
+    error:        { label: 'Попробовать иначе', variant: 'danger'  }
+  }[state];
+
+  return (
+    <div className="mx-auto flex min-h-[844px] w-full max-w-[390px] flex-col px-6 pb-6 pt-[72px]">
+      <Phrase keyProp={state + city}>{phrase}</Phrase>
+
+      {facts ? <Facts dot={state === 'on'}>{facts}</Facts> : null}
+
+      {state === 'error' ? (
+        <p className="mt-4 text-[13px] leading-[1.5] text-sec">Провайдер блокирует этот порт</p>
+      ) : null}
+
+      <div className="mt-auto">
+        <Button variant={primary.variant} onClick={onPrimary}>{primary.label}</Button>
+
+        <button
+          type="button"
+          onClick={onSettings}
+          className="mt-4 flex h-14 w-full items-center border-t border-rule text-[15px] text-ink transition-colors duration-150 ease-out"
+        >
+          Настройки&nbsp;›
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────── экран 2: города ─────────────────────────── */
+
+function CitySheet({ active, onPick, onClose }) {
+  const [q, setQ] = useState('');
+  const inputRef = useRef(null);
+
+  useEffect(() => { if (inputRef.current) inputRef.current.focus(); }, []);
+
+  const query = q.trim().toLowerCase();
+  const match = (c) => !query || (c.name + ' ' + c.country).toLowerCase().includes(query);
+  const recents = CITIES.filter((c) => RECENTS.includes(c.id) && match(c));
+  const grouped = CITIES.filter(match).reduce((acc, c) => {
+    (acc[c.country] = acc[c.country] || []).push(c);
+    return acc;
+  }, {});
+
+  const Row = ({ c }) => {
+    const isActive = c.id === active;
+    return (
+      <button
+        type="button"
+        onClick={() => onPick(c.id)}
+        className="flex h-[60px] w-full items-center text-left"
+        aria-current={isActive ? 'true' : undefined}
+      >
+        <span className="mr-3 flex h-6 w-2 items-center">
+          {isActive ? <span aria-hidden="true" className="h-2 w-2 rounded-full bg-accent" /> : null}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className={'block text-[20px] leading-tight ' + (isActive ? 'font-semibold' : 'font-medium')}>
+            {c.name}
+          </span>
+          <span className="block text-[13px] text-sec">{c.country}</span>
+        </span>
+        <span className="font-mono text-[13px] text-sec">{c.ping}</span>
+      </button>
+    );
+  };
+
+  return (
+    <div className="fixed inset-0 z-20 mx-auto flex w-full max-w-[390px] flex-col justify-end">
+      <button
+        type="button"
+        aria-label="Закрыть выбор города"
+        onClick={onClose}
+        className="absolute inset-0 h-full w-full"
+        style={{ background: 'rgba(22,24,29,0.18)' }}
+      />
+      <div className="sheet-in relative max-h-[80vh] overflow-y-auto border-t border-rule bg-bg no-scrollbar">
+        <div className="sticky top-0 z-10 bg-bg px-6 pt-4">
+          <input
+            ref={inputRef}
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Поиск города"
+            aria-label="Поиск города"
+            className="h-12 w-full border-b border-rule bg-transparent text-[15px] text-ink placeholder:text-sec focus:outline-none"
+          />
+        </div>
+
+        <div className="px-6 pb-8">
+          {recents.length ? (
+            <>
+              <div className="pt-5 text-[12px] uppercase tracking-[0.08em] text-sec">Недавние</div>
+              {recents.map((c) => <Row key={'r' + c.id} c={c} />)}
+            </>
+          ) : null}
+
+          {Object.keys(grouped).map((country) => (
+            <div key={country}>
+              <div className="pt-5 text-[12px] uppercase tracking-[0.08em] text-sec">{country}</div>
+              {grouped[country].map((c) => <Row key={c.id} c={c} />)}
+            </div>
+          ))}
+
+          {!Object.keys(grouped).length ? (
+            <p className="pt-6 text-[15px] text-sec">Ничего не нашлось</p>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────── экран 3: настройки ─────────────────────────── */
+
+function Switch({ checked, onChange, label }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      onClick={onChange}
+      className="flex h-11 w-11 shrink-0 items-center justify-end"
+    >
+      {/* тач-цель 44px, сам переключатель 44×24 */}
+      <span
+        aria-hidden="true"
+        className="relative h-6 w-11 rounded-[12px] border transition-colors duration-150 ease-out"
+        style={{
+          background: checked ? '#1E6B4F' : 'transparent',
+          borderColor: checked ? '#1E6B4F' : '#B9B6AE'
+        }}
+      >
+        <span
+          className="absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full transition-all duration-150 ease-out"
+          style={{ left: checked ? '24px' : '3px', background: checked ? '#F6F4EF' : '#6E7076' }}
+        />
+      </span>
+    </button>
+  );
+}
+
+function Row({ title, value, children, note }) {
+  return (
+    <div className="border-b border-rule">
+      <div className="flex h-14 items-center justify-between gap-4">
+        <span className="text-[15px] text-ink">{title}</span>
+        {children || <span className="font-mono text-[13px] text-sec">{value}</span>}
+      </div>
+      {note ? <p className="pb-3 text-[13px] leading-[1.5] text-sec">{note}</p> : null}
+    </div>
+  );
+}
+
+function SettingsScreen({ onBack }) {
+  const [kill, setKill] = useState(true);
+  const [auto, setAuto] = useState(true);
+
+  return (
+    <div className="mx-auto min-h-[844px] w-full max-w-[390px] px-6 pb-8 pt-4">
+      <button
+        type="button"
+        onClick={onBack}
+        className="flex h-11 items-center text-[15px] text-sec"
+      >
+        ‹&nbsp;Назад
+      </button>
+
+      <div className="pt-6 text-[12px] uppercase tracking-[0.08em] text-sec">Соединение</div>
+      <Row title="Протокол" value="veil · TLS" />
+      <Row title="Автоподключение">
+        <Switch checked={auto} onChange={() => setAuto(!auto)} label="Автоподключение" />
+      </Row>
+
+      <div className="pt-8 text-[12px] uppercase tracking-[0.08em] text-sec">Безопасность</div>
+      <Row
+        title="Блокировать интернет при обрыве"
+        note="Трафик встанет, пока туннель не восстановится"
+      >
+        <Switch checked={kill} onChange={() => setKill(!kill)} label="Блокировать интернет при обрыве" />
+      </Row>
+
+      <div className="pt-8 text-[12px] uppercase tracking-[0.08em] text-sec">Приложение</div>
+      <Row title="Тема" value="Светлая" />
+      <Row title="Язык" value="Русский" />
+      <Row title="Журнал" value="Открыть" />
+    </div>
+  );
+}
+
+/* ─────────────────────────── экран 4: онбординг ─────────────────────────── */
+
+function Onboarding({ onAllow }) {
+  return (
+    <div className="mx-auto flex min-h-[844px] w-full max-w-[390px] flex-col px-6 pb-6 pt-[72px]">
+      <div className="text-[36px] font-medium leading-[1.15] tracking-[-0.01em]">
+        Приложение создаст VPN-подключение.
+      </div>
+      <div className="mt-auto">
+        <Button onClick={onAllow}>Разрешить</Button>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────── приложение ─────────────────────────── */
+
+function App() {
+  const [screen, setScreen] = useState('onboarding'); // onboarding | main | settings
+  const [sheet, setSheet] = useState(false);
+  const [state, setState] = useState('off');         // off | connecting | on | reconnecting | error
+  const [stage, setStage] = useState(0);
+  const [city, setCity] = useState('ams');
+  const [seconds, setSeconds] = useState(0);
+  const timers = useRef([]);
+
+  const clearTimers = () => {
+    timers.current.forEach(clearTimeout);
+    timers.current = [];
+  };
+
+  const connect = useCallback((id) => {
+    clearTimers();
+    if (id) setCity(id);
+    setState('connecting');
+    setStage(0);
+    timers.current.push(setTimeout(() => setStage(1), 900));
+    timers.current.push(setTimeout(() => setStage(2), 1800));
+    timers.current.push(setTimeout(() => { setSeconds(0); setState('on'); }, 2700));
+  }, []);
+
+  const reconnect = useCallback((id) => {
+    clearTimers();
+    setCity(id);
+    setState('reconnecting');
+    timers.current.push(setTimeout(() => { setSeconds(0); setState('on'); }, 1600));
+  }, []);
+
+  // длительность сессии
+  useEffect(() => {
+    if (state !== 'on') return;
+    const t = setInterval(() => setSeconds((s) => s + 1), 1000);
+    return () => clearInterval(t);
+  }, [state]);
+
+  useEffect(() => () => clearTimers(), []);
+
+  const stop = () => { clearTimers(); setState('off'); setSeconds(0); };
+
+  const primary = () => {
+    if (state === 'off') connect();
+    else if (state === 'connecting' || state === 'reconnecting') stop();
+    else if (state === 'on') stop();
+    else if (state === 'error') connect();
+  };
+
+  const pickCity = (id) => {
+    setSheet(false);
+    if (state === 'on' || state === 'connecting') reconnect(id);
+    else connect(id);
+  };
+
+  // демо-переключение состояний клавишами 1–5 (в интерфейсе не показано)
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.target && ['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
+      const map = { '1': 'off', '2': 'connecting', '3': 'on', '4': 'reconnecting', '5': 'error' };
+      if (e.key === 'Escape') { setSheet(false); return; }
+      const next = map[e.key];
+      if (!next) return;
+      clearTimers();
+      setStage(1);
+      setState(next);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  if (screen === 'onboarding') return <Onboarding onAllow={() => setScreen('main')} />;
+  if (screen === 'settings') return <SettingsScreen onBack={() => setScreen('main')} />;
+
+  return (
+    <>
+      <MainScreen
+        state={state}
+        stage={stage}
+        city={city}
+        seconds={seconds}
+        onPrimary={primary}
+        onOpenCities={() => setSheet(true)}
+        onSettings={() => setScreen('settings')}
+      />
+      {sheet ? <CitySheet active={city} onPick={pickCity} onClose={() => setSheet(false)} /> : null}
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
