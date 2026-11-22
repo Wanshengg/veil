@@ -114,6 +114,12 @@ func configureAdapter(c *cfg) error {
 	}
 	ips := []net.IP{net.ParseIP(host)}
 	gw, ifIdx, gwName := defaultGateway()
+	// адрес физического интерфейса: им привязываем «прямые» соединения,
+	// иначе они снова уйдут в TUN и завернутся в петлю
+	if ip := ifaceIPv4(ifIdx); ip != nil {
+		c.directIP = ip
+		log.Printf("tun: direct dials bound to %s (%s)", ip, gwName)
+	}
 	if gw == "" {
 		return fmt.Errorf("tun: не найден физический шлюз")
 	}
@@ -145,6 +151,14 @@ func tunIndex() int {
 
 func removeRoutes() {
 	_ = run("route", "delete", "0.0.0.0", "mask", "0.0.0.0", "198.18.0.1")
+}
+
+// ifaceIPv4 — первый IPv4-адрес интерфейса по ifIndex.
+func ifaceIPv4(idx int) net.IP {
+	out := output("powershell", "-NoProfile", "-Command",
+		"(Get-NetIPAddress -InterfaceIndex "+strconv.Itoa(idx)+
+			" -AddressFamily IPv4 -ErrorAction SilentlyContinue | Select-Object -First 1).IPAddress")
+	return net.ParseIP(strings.TrimSpace(out))
 }
 
 // defaultGateway возвращает шлюз и ifIndex физического маршрута по умолчанию.

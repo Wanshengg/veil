@@ -38,6 +38,7 @@ type cfg struct {
 	fp          string
 	rules       *rules.Rules
 	tunMTU      int
+	directIP    net.IP // адрес физического интерфейса для «прямых» соединений
 
 	mu   sync.Mutex
 	good string
@@ -321,10 +322,20 @@ func openTunnel(c *cfg, target string) (*utls.UConn, []byte, []byte, string, err
 	return nil, nil, nil, "", last
 }
 
+// dialDirect открывает соединение мимо TUN: привязываем источник к физическому
+// интерфейсу, иначе пакет снова уйдёт в туннель и получится петля.
+func (c *cfg) dialDirect(target string) (net.Conn, error) {
+	d := net.Dialer{Timeout: 10 * time.Second}
+	if c.directIP != nil {
+		d.LocalAddr = &net.TCPAddr{IP: c.directIP}
+	}
+	return d.Dial("tcp", target)
+}
+
 // serve dials the destination (direct or through the tunnel) and splices bytes.
 func serve(client net.Conn, br *bufio.Reader, target string, c *cfg) {
 	if c.rules != nil && c.rules.Direct(target) {
-		up, err := net.DialTimeout("tcp", target, 10*time.Second)
+		up, err := c.dialDirect(target)
 		if err != nil {
 			log.Printf("direct %s: %v", target, err)
 			return
@@ -481,7 +492,7 @@ func handleHTTP(conn net.Conn, c *cfg) {
 
 	if strings.EqualFold(req.method, "CONNECT") {
 		if c.rules != nil && c.rules.Direct(req.target) {
-			up, derr := net.DialTimeout("tcp", req.target, 10*time.Second)
+			up, derr := c.dialDirect(req.target)
 			if derr != nil {
 				log.Printf("http connect %s: %v", req.target, derr)
 				conn.Write([]byte("HTTP/1.1 502 Bad Gateway\r\n\r\n"))
@@ -538,7 +549,7 @@ func handleHTTP(conn net.Conn, c *cfg) {
 	raw := []byte(b.String())
 
 	if c.rules != nil && c.rules.Direct(target) {
-		up, derr := net.DialTimeout("tcp", target, 10*time.Second)
+		up, derr := c.dialDirect(target)
 		if derr != nil {
 			conn.Write([]byte("HTTP/1.1 502 Bad Gateway\r\n\r\n"))
 			return
