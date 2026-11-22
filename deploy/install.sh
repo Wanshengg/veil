@@ -30,7 +30,7 @@ Wants=network-online.target
 User=veil
 Group=veil
 EnvironmentFile=/opt/veil/veil.env
-ExecStart=/opt/veil/veil-server -addr :443 \
+ExecStart=/opt/veil/veil-server -addr :${VEIL_PORT:-8443} \
   -cert /opt/veil/certs/fullchain.pem \
   -key /opt/veil/certs/privkey.pem \
   -psk ${VEIL_PSK} \

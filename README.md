@@ -129,3 +129,23 @@ python tools/probe.py -server veil.example.com:443 -sni veil.example.com \
 (`tunnel -> 1.1.1.1:53` в логе), сеть восстанавливается после остановки.
 **Не работает: обратный путь** — ответы из netstack не доходят до сокетов приложения,
 поэтому TUN-режим пока не включается в интерфейсе. Требует администратора.
+
+## Порт: 443 блокируется по волнам, рабочий — 8443
+
+ТСПУ режет не IP, а конкретный порт: к `203.0.113.10:443` TCP-соединение
+устанавливается, но ClientHello до сервера не доезжает (в логах сервера —
+`tls handshake: read ... i/o timeout`), при этом `:8443` с тем же сертификатом
+и тем же SNI проходит и верифицируется.
+
+Как проверить за минуту:
+
+```bash
+# временный TLS-листенер на запасном порту
+openssl s_server -accept 8443 -cert fullchain.pem -key privkey.pem -www -quiet &
+# если здесь handshake проходит, а на :443 висит — режут порт, а не адрес
+openssl s_client -connect 203.0.113.10:8443 -servername se.example.com </dev/null
+```
+
+Переезд: `-addr :${VEIL_PORT:-8443}` в юните, `ufw allow 8443/tcp`,
+и новый порт в `veil.ini` + в `veil://` ключах (payload — base64 от
+`server:port|sni|fp|psk`).

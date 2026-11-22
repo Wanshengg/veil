@@ -11,7 +11,7 @@ echo "== 1. DNS =="
 python -c "import socket;print(socket.gethostbyname('$HOST'))" 2>&1
 
 echo "== 2. TLS from this host (RU, direct) =="
-echo | timeout 15 openssl s_client -connect "$HOST:443" -servername "$HOST" 2>/dev/null |
+echo | timeout 15 openssl s_client -connect "$HOST:${PORT:-8443}" -servername "$HOST" 2>/dev/null |
   grep -E "subject=|issuer=|Protocol *:|Cipher *:|ALPN" | head -6
 
 echo "== 3. HTTP (fallback page) =="
@@ -19,13 +19,13 @@ curl -s -o NUL -w "code=%{http_code} tls=%{time_appconnect}s total=%{time_total}
 
 echo "== 4. garbage probe inside TLS (should still look like a site) =="
 printf 'GET / HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n' "$HOST" |
-  timeout 10 openssl s_client -quiet -connect "$HOST:443" -servername "$HOST" 2>/dev/null | head -2
+  timeout 10 openssl s_client -quiet -connect "$HOST:${PORT:-8443}" -servername "$HOST" 2>/dev/null | head -2
 
 echo "== 5. public CT logs (is the cert really trusted & public) =="
 curl -s --max-time 20 "https://crt.sh/?q=$HOST&output=json" | head -c 300; echo
 
 echo "== 6. tunnel: exit ip / country =="
-./bin/veil-client -socks 127.0.0.1:1091 -server "$HOST:443" -sni "$HOST" -psk "$PSK" >/tmp/verify.log 2>&1 &
+./bin/veil-client -socks 127.0.0.1:1091 -server "$HOST:${PORT:-8443}" -sni "$HOST" -psk "$PSK" >/tmp/verify.log 2>&1 &
 CLI=$!
 trap 'kill $CLI 2>/dev/null' EXIT
 sleep 2
