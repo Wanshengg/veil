@@ -125,6 +125,7 @@
     },
 
     ping(ms) {
+      if (!ms) return `<span class="ping num faint">—</span>`;
       const cls = ms < 50 ? "good" : ms < 100 ? "mid" : "bad";
       return `<span class="ping num ${cls}">${ms} ms</span>`;
     },
@@ -150,6 +151,7 @@
 
     sparkline(series) {
       const w = 320, h = 68;
+      if (!series || series.length < 2) series = [0, 0];
       const max = Math.max(...series), min = Math.min(...series);
       const norm = (v) => h - ((v - min) / (max - min || 1)) * (h - 10) - 5;
       const pts = series.map((v, i) => [(i / (series.length - 1)) * w, norm(v)]);
@@ -266,12 +268,13 @@
         <div class="card">
           <div class="chart-wrap">
             <div class="chart-head">
-              <span class="caps">Скорость</span>
-              <span class="num muted" style="font-size:var(--fs-13)">
-                ${icon.arrowDown} ${comp.fmtGB(snap.traffic.down)} МБ/с · ${icon.arrowUp} ${comp.fmtGB(snap.traffic.up)} МБ/с
+              <span class="caps">${snap.seriesUnit === "ms" ? "Пинг за сессию" : "Скорость"}</span>
+              <span class="num muted" style="font-size:var(--fs-13)">${snap.seriesUnit === "ms"
+                ? (snap.series.length ? "сейчас " + snap.series[snap.series.length - 1] + " мс" : "нет данных")
+                : `${icon.arrowDown} ${comp.fmtGB(snap.traffic.down)} · ${icon.arrowUp} ${comp.fmtGB(snap.traffic.up)} МБ/с`}
               </span>
             </div>
-            ${comp.sparkline(snap.series)}
+            ${comp.sparkline(snap.series.length > 1 ? snap.series : [0, 0])}
           </div>
         </div>
 
@@ -342,7 +345,7 @@
 
     plan(snap) {
       const s = snap.subscription;
-      const pct = Math.round((s.usedGB / s.totalGB) * 100);
+      const pct = s.totalGB > 0 ? Math.round((s.usedGB / s.totalGB) * 100) : 0;
       const days = s.active ? "89 дней" : "0 дней";
       return `
       <section style="display:grid;gap:var(--s-4)">
@@ -360,14 +363,14 @@
           <div>
             <div style="display:flex;justify-content:space-between;margin-bottom:var(--s-2)">
               <span class="caps">Трафик</span>
-              <span class="num muted" style="font-size:var(--fs-13)">${s.usedGB} / ${s.totalGB} ГБ</span>
+              <span class="num muted" style="font-size:var(--fs-13)">${s.totalGB > 0 ? s.usedGB + " / " + s.totalGB + " ГБ" : "без лимита"}</span>
             </div>
             <div class="bar"><i style="width:${pct}%"></i></div>
           </div>
 
           <div class="kv">
             <div><div class="k">Устройства</div><div class="v num">${s.devices} / ${s.deviceLimit}</div></div>
-            <div><div class="k">Осталось</div><div class="v num">${(s.totalGB - s.usedGB).toFixed(1)} ГБ</div></div>
+            <div><div class="k">Осталось</div><div class="v num">${s.totalGB > 0 ? (s.totalGB - s.usedGB).toFixed(1) + " ГБ" : "∞"}</div></div>
             <div><div class="k">Серверов</div><div class="v num">8</div></div>
           </div>
 
