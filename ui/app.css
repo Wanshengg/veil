@@ -65,10 +65,10 @@ body {
 .brand { display: flex; align-items: center; gap: var(--s-2); }
 .brand-mark {
   width: 32px; height: 32px;
-  border-radius: 10px;
+  border-radius: 50%;
   display: block;
   object-fit: contain;
-  box-shadow: 0 8px 20px -8px rgba(91, 140, 255, 0.65);
+  box-shadow: 0 6px 18px -8px rgba(91, 140, 255, 0.55);
 }
 .brand-name { font-weight: var(--w-strong); letter-spacing: -0.01em; }
 .brand-sub {
