@@ -103,6 +103,10 @@
       appToggle(path) { const a = snap.apps.find((x) => x.path === path); if (a) a.on = !a.on; emit(); },
       appRun(name) { alert("В макете приложение «" + name + "» запускается через прокси"); },
       appDel(path) { snap.apps = snap.apps.filter((x) => x.path !== path); emit(); },
+      srvInstall() { snap.srvStatus = "Макет: сервер не ставится"; emit(); },
+      srvKeys() { snap.srvStatus = "Макет: ключи не читаются"; emit(); },
+      srvIssue() { snap.srvStatus = "Макет: ключ не выдаётся"; emit(); },
+      srvRevoke() { snap.srvStatus = "Макет: ключ не отзывается"; emit(); },
       keyPaste() { snap.keyMsg = "Макет: ключ из буфера не читается"; emit(); },
       keyAdd() { snap.keyMsg = "Макет: ключ не добавляется"; emit(); },
       refresh() { emit(); },
@@ -283,6 +287,74 @@
       </section>`;
     },
 
+    server(snap) {
+      const keys = snap.srvKeys || [];
+      const host = snap.srvHost || "";
+      const busy = !!snap.srvBusy;
+      const status = snap.srvStatus || "";
+
+      const field = (id, label, ph, val, type) => `
+        <label class="field">
+          <span class="caps">${esc(label)}</span>
+          <input id="${id}" type="${type || "text"}" placeholder="${esc(ph)}" value="${esc(val || "")}"
+                 spellcheck="false" autocomplete="off" ${busy ? "disabled" : ""}>
+        </label>`;
+
+      const form = `
+        <div class="card srv-form">
+          <div class="srv-hint faint">
+            Заполни доступ по SSH — приложение само поставит veil на сервер,
+            выпустит сертификат и добавит ключ на главную.
+          </div>
+          <div class="srv-grid">
+            ${field("srvHost", "Сервер", "203.0.113.10 или veil.example.com", host)}
+            ${field("srvPort", "Порт SSH", "22", "22", "number")}
+            ${field("srvUser", "Пользователь", "root", snap.srvUser || "root")}
+            ${field("srvPass", "Пароль", "пароль root", "", "password")}
+            ${field("srvDomain", "Домен (необязательно)", "veil.example.com — для Let's Encrypt", "")}
+          </div>
+          <button class="btn primary" data-action="srv-install" ${busy ? "disabled" : ""}>
+            ${busy ? "Устанавливаю…" : "Установить сервер"}
+          </button>
+          <div class="srv-note faint">
+            Без домена сервер получит самоподписанный сертификат, а клиент будет
+            проверять его по отпечатку — шифрование то же, маскировка слабее.
+          </div>
+        </div>`;
+
+      const keysBlock = host ? `
+        <div class="card">
+          <div class="srv-head">
+            <span class="caps">Ключи на сервере</span>
+            <span class="faint" style="font-size:var(--fs-12)">${esc(host)} · ${keys.length}</span>
+          </div>
+          ${keys.length
+            ? `<div class="list">${keys.map((k) => `
+                <div class="row" style="min-height:52px" data-key="${esc(k)}">
+                  <span class="flag" aria-hidden="true">${esc(k.slice(0, 2).toUpperCase())}</span>
+                  <span class="main"><span class="name">${esc(k)}</span><span class="sub">персональный ключ</span></span>
+                  <span class="side"><button class="btn ghost" style="min-height:34px" data-action="srv-revoke" data-name="${esc(k)}">Отозвать</button></span>
+                </div>`).join("")}</div>`
+            : `<div class="faint" style="font-size:var(--fs-13)">пока один — тот, что выдан при установке</div>`}
+          <div class="srv-actions">
+            <input id="srvNewKey" type="text" placeholder="имя: мама, друг-петя" ${busy ? "disabled" : ""}>
+            <button class="btn" data-action="srv-issue" ${busy ? "disabled" : ""}>Выдать ключ</button>
+            <button class="btn ghost" data-action="srv-refresh" ${busy ? "disabled" : ""}>Обновить</button>
+          </div>
+        </div>` : "";
+
+      return `
+      <section class="add">
+        <div class="add-head">
+          <div class="title">Свой сервер</div>
+          <div class="faint">Один раз ввести доступ по SSH — и сервер настраивается сам.</div>
+        </div>
+        ${form}
+        ${keysBlock}
+        <div class="paste-msg ${/Ошибка/i.test(status) ? "is-error" : status ? "is-ok" : ""}" role="status" aria-live="polite">${esc(status)}</div>
+      </section>`;
+    },
+
     settings(snap) {
       const s = snap.settings;
       const row = (title, sub, control) => `
@@ -362,6 +434,7 @@
     const view = $("#view");
     view.innerHTML = state.tab === "settings" ? views.settings(snap)
       : state.tab === "add" ? views.add(snap)
+      : state.tab === "server" ? views.server(snap)
       : views.home(snap, servers);
 
     document.querySelectorAll(".tab").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.tab === state.tab)));
@@ -417,6 +490,20 @@
     else if (a === "set-tun") adapter.setSetting("tun", !snap.settings.tun);
     else if (a === "add-key") { state.tab = "add"; render(); }
     else if (a === "key-paste") adapter.keyPaste();
+    else if (a === "srv-install") {
+      const root = action.closest("section");
+      const val = (id) => { const el = root.querySelector("#" + id); return el ? el.value.trim() : ""; };
+      adapter.srvInstall({ host: val("srvHost"), port: val("srvPort") || "22", user: val("srvUser") || "root",
+                           pass: val("srvPass"), keyfile: "", domain: val("srvDomain") });
+    }
+    else if (a === "srv-issue") {
+      const root = action.closest("section");
+      const el = root.querySelector("#srvNewKey");
+      const name = el ? el.value.trim() : "";
+      if (name) adapter.srvIssue(name); else toast("Впиши имя, для кого ключ", "error");
+    }
+    else if (a === "srv-revoke") adapter.srvRevoke(action.dataset.name || "");
+    else if (a === "srv-refresh") adapter.srvKeys();
     else if (a === "app-add") adapter.appAdd();
     else if (a === "app-run") adapter.appRun(action.dataset.path);
     else if (a === "sheet-rules") openSheet("Исключения маршрутизации", rulesSheet());

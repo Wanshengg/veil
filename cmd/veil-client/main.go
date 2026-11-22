@@ -5,6 +5,7 @@ package main
 import (
 	"bufio"
 	"crypto/sha256"
+	"encoding/hex"
 	"encoding/binary"
 	"flag"
 	"fmt"
@@ -40,6 +41,7 @@ type cfg struct {
 	rules       *rules.Rules
 	tunMTU      int
 	serverIPPin string
+	pin         string
 	directIP    net.IP
 	candidates  []string // host:port, перебираем при блокировке порта
 	portIdx     int32    // индекс последнего рабочего порта (atomic) // адрес физического интерфейса для «прямых» соединений
@@ -121,6 +123,7 @@ func main() {
 	tun := flag.Bool("tun", false, "route ALL system traffic through the tunnel (needs admin, wintun.dll)")
 	tunMTU := flag.Int("tun-mtu", 1400, "MTU of the TUN adapter (lower if the tunnel stalls)")
 	serverIP := flag.String("server-ip", "", "pin server IP, skip DNS (needed if another VPN hijacks DNS)")
+	pin := flag.String("pin", "", "verify pinned sha256 of the server certificate (self-signed servers)")
 	portList := flag.String("ports", "443,8443,2083,9443", "ports to try on the same host when one is blocked (comma separated)")
 	flag.Parse()
 	applyConfig(*cfgPath)
@@ -144,7 +147,7 @@ func main() {
 		geoDB = geoip.RU()
 	}
 	c := &cfg{server: *server, sni: sniName, key: sum[:], insecure: *insecure, fp: *fp,
-		serverIPPin: *serverIP,
+		serverIPPin: *serverIP, pin: strings.ToLower(strings.TrimSpace(*pin)),
 		rules: rules.NewRules(*direct, *rulesFile, geoDB)}
 
 	if *probe != "" {
@@ -336,8 +339,21 @@ func dialTunnel(c *cfg, addr, fp string, maxVer uint16) (*utls.UConn, error) {
 	raw.SetDeadline(time.Now().Add(5 * time.Second))
 	cfgTLS := &utls.Config{
 		ServerName:         c.sni,
-		InsecureSkipVerify: c.insecure,
+		InsecureSkipVerify: c.insecure || c.pin != "",
 		NextProtos:         []string{"h2", "http/1.1"},
+	}
+	if c.pin != "" {
+		// сертификат самоподписанный: сверяем отпечаток листа вместо цепочки
+		cfgTLS.VerifyConnection = func(cs utls.ConnectionState) error {
+			if len(cs.PeerCertificates) == 0 {
+				return fmt.Errorf("pin: сервер не прислал сертификат")
+			}
+			sum := sha256.Sum256(cs.PeerCertificates[0].Raw)
+			if !strings.EqualFold(hex.EncodeToString(sum[:]), c.pin) {
+				return fmt.Errorf("pin: отпечаток не совпал (%s != %s)", hex.EncodeToString(sum[:])[:16], c.pin[:16])
+			}
+			return nil
+		}
 	}
 	if maxVer != 0 {
 		cfgTLS.MaxVersion = maxVer

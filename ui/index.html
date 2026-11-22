@@ -38,6 +38,10 @@
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
       Ключ
     </button>
+    <button class="tab" role="tab" data-tab="server" aria-selected="false">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></svg>
+      Сервер
+    </button>
     <button class="tab" role="tab" data-tab="settings" aria-selected="false">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 00-.1-1.2l2-1.5-2-3.4-2.3 1a7 7 0 00-2-1.2L14.2 3H9.8l-.4 2.7a7 7 0 00-2 1.2l-2.3-1-2 3.4 2 1.5A7 7 0 005 12c0 .4 0 .8.1 1.2l-2 1.5 2 3.4 2.3-1a7 7 0 002 1.2l.4 2.7h4.4l.4-2.7a7 7 0 002-1.2l2.3 1 2-3.4-2-1.5c.1-.4.1-.8.1-1.2z"/></svg>
       Настройки
@@ -83,6 +87,11 @@
     appDel: (path) => post({ cmd: "app-del", path }),
     keyPaste: () => post({ cmd: "key-paste" }),
     keyAdd: (key) => post({ cmd: "key-add", key }),
+    srvInstall: (cfg) => post({ cmd: "srv-install", host: cfg.host, port: String(cfg.port), user: cfg.user,
+                               pass: cfg.pass, keyfile: cfg.keyfile, domain: cfg.domain }),
+    srvKeys: () => post({ cmd: "srv-keys" }),
+    srvIssue: (name) => post({ cmd: "srv-issue", name }),
+    srvRevoke: (name) => post({ cmd: "srv-revoke", name }),
   };
   if (window.VEIL_UI) window.VEIL_UI.setAdapter(host);
 })();

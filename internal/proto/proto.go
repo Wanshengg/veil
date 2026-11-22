@@ -174,6 +174,76 @@ func ServerHandshake(br *bufio.Reader, w io.Writer, psk []byte, rp *ReplayCache)
 	return out, in, string(payload), nil
 }
 
+
+// ServerHandshakeMulti — то же, что ServerHandshake, но сервер знает несколько
+// ключей (по одному на человека). Заголовок не содержит id ключа, поэтому
+// первый AEAD-кадр пробуем расшифровать каждым ключом: он аутентифицирован,
+// и чужой ключ даст ошибку. Имя совпавшего ключа возвращается для лога.
+func ServerHandshakeMulti(br *bufio.Reader, w io.Writer, keys []NamedKey, rp *ReplayCache) (out, in []byte, target, keyName string, err error) {
+	hdr, perr := br.Peek(HeaderLen)
+	if perr != nil {
+		return nil, nil, "", "", ErrNoMagic
+	}
+	if string(hdr[:len(Magic)]) != Magic || hdr[len(Magic)] != Version {
+		return nil, nil, "", "", ErrNoMagic
+	}
+	ts := int64(binary.BigEndian.Uint64(hdr[len(Magic)+1:]))
+	if d := time.Since(time.Unix(ts, 0)); d > Tolerance || d < -Tolerance {
+		return nil, nil, "", "", ErrReplay
+	}
+	salt := append([]byte(nil), hdr[len(Magic)+1+8:]...)
+	if !rp.Seen(salt) {
+		return nil, nil, "", "", ErrReplay
+	}
+
+	// первый кадр целиком, без вычитывания из буфера — чтобы можно было
+	// перебрать ключи, не теряя байты
+	lb, perr := br.Peek(HeaderLen + 4)
+	if perr != nil {
+		return nil, nil, "", "", perr
+	}
+	n := binary.BigEndian.Uint32(lb[HeaderLen:])
+	if n < uint32(NonceLen+TagLen+2) || n > 4*MaxFrame {
+		return nil, nil, "", "", fmt.Errorf("proto: frame length %d out of range", n)
+	}
+	raw, perr := br.Peek(HeaderLen + 4 + int(n))
+	if perr != nil {
+		return nil, nil, "", "", perr
+	}
+	buf := raw[HeaderLen+4:]
+
+	for _, k := range keys {
+		candOut := DeriveKey(k.PSK, salt, "veil v1 s2c")
+		candIn := DeriveKey(k.PSK, salt, "veil v1 c2s")
+		aead, aerr := chacha20poly1305.NewX(candIn)
+		if aerr != nil {
+			continue
+		}
+		pt, oerr := aead.Open(nil, buf[:NonceLen], buf[NonceLen:], nil)
+		if oerr != nil || len(pt) < 2 {
+			continue // не наш ключ
+		}
+		if _, derr := br.Discard(HeaderLen + 4 + int(n)); derr != nil {
+			return nil, nil, "", "", derr
+		}
+		if werr := WriteFrame(w, candOut, []byte("OK")); werr != nil {
+			return nil, nil, "", "", werr
+		}
+		plen := int(binary.BigEndian.Uint16(pt[:2]))
+		if 2+plen > len(pt) {
+			continue
+		}
+		return candOut, candIn, string(pt[2 : 2+plen]), k.Name, nil
+	}
+	return nil, nil, "", "", ErrNoMagic
+}
+
+// NamedKey — ключ с именем владельца (для логов и отзыва).
+type NamedKey struct {
+	Name string
+	PSK  []byte
+}
+
 // Relay pumps bytes both ways: fr/fw is the framed tunnel side,
 // target is a plain TCP connection.
 func Relay(target io.ReadWriteCloser, fr io.Reader, fw io.Writer, keyOut, keyIn []byte) {

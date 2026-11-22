@@ -740,3 +740,38 @@ body[data-overlay] .sheet { transform: translate(-50%, 0); }
 }
 .add-hint .faint { font-size: var(--fs-12); color: var(--text-3); line-height: 1.6; }
 .add-hint code { color: var(--text-2); font-size: var(--fs-12); }
+
+/* ── экран «Свой сервер» ────────────────────────────────────────────────── */
+.srv-form { display: grid; gap: var(--s-3); }
+.srv-hint { font-size: var(--fs-13); line-height: 1.55; color: var(--text-3); }
+.srv-grid { display: grid; gap: var(--s-3); }
+.field { display: grid; gap: 6px; }
+.field .caps { font-size: var(--fs-11); }
+.field input {
+  background: var(--layer-1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-12);
+  padding: 10px var(--s-3);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-13);
+  outline: none;
+  transition: border-color var(--t-base) var(--ease);
+}
+.field input:focus { border-color: var(--border-strong); }
+.field input:disabled { opacity: 0.55; }
+.srv-note { font-size: var(--fs-11); color: var(--text-3); line-height: 1.5; }
+.srv-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: var(--s-2); }
+.srv-actions { display: flex; gap: var(--s-2); margin-top: var(--s-3); flex-wrap: wrap; }
+.srv-actions input {
+  flex: 1;
+  min-width: 140px;
+  background: var(--layer-1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-12);
+  padding: 10px var(--s-3);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-13);
+  outline: none;
+}

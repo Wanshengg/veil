@@ -5,7 +5,6 @@ package main
 
 import (
 	"bufio"
-	"crypto/sha256"
 	"strconv"
 	"strings"
 	"sync"
@@ -15,6 +14,8 @@ import (
 	"log"
 	"net"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"veil/internal/proto"
@@ -24,15 +25,14 @@ func main() {
 	addr := flag.String("addr", ":443", "listen address")
 	certFile := flag.String("cert", "cert.pem", "TLS certificate (fullchain)")
 	keyFile := flag.String("key", "key.pem", "TLS private key")
-	psk := flag.String("psk", "", "pre-shared key")
+	psk := flag.String("psk", "", "single pre-shared key (legacy)")
+	psksFile := flag.String("psks", "", "file with keys, one per line: name:psk (SIGHUP to reload)")
 	fallback := flag.String("fallback", "127.0.0.1:8080", "where to proxy non-veil traffic (real site)")
 	flag.Parse()
 
-	if *psk == "" {
-		log.Fatal("veil-server: -psk is required")
+	if *psk == "" && *psksFile == "" {
+		log.Fatal("veil-server: нужен -psk или -psks")
 	}
-	sum := sha256.Sum256([]byte(*psk))
-	key := sum[:]
 
 	cert, err := tls.LoadX509KeyPair(*certFile, *keyFile)
 	if err != nil {
@@ -43,6 +43,25 @@ func main() {
 		NextProtos:   []string{"http/1.1"},
 		MinVersion:   tls.VersionTLS12,
 	}
+	ring, err := LoadKeyring(*psk, *psksFile)
+	if err != nil {
+		log.Fatalf("veil-server: keys: %v", err)
+	}
+	log.Printf("veil-server: keys loaded: %d (%s)", len(ring.Keys()), ring.Names())
+
+	// SIGHUP перечитывает файл ключей: выдать/отозвать ключ = правка файла
+	hup := make(chan os.Signal, 1)
+	signal.Notify(hup, syscall.SIGHUP)
+	go func() {
+		for range hup {
+			if err := ring.Reload(*psksFile); err != nil {
+				log.Printf("keys reload: %v", err)
+				continue
+			}
+			log.Printf("keys reloaded: %d (%s)", len(ring.Keys()), ring.Names())
+		}
+	}()
+
 	rp := proto.NewReplayCache(10 * time.Minute)
 
 	// список адресов через запятую: ТСПУ блокирует отдельные порты по волнам,
@@ -68,14 +87,14 @@ func main() {
 					log.Printf("accept %s: %v", ln.Addr(), aerr)
 					return
 				}
-				go handle(c, key, rp, *fallback)
+				go handle(c, ring, rp, *fallback)
 			}
 		}(ln)
 	}
 	wg.Wait()
 }
 
-func handle(c net.Conn, key []byte, rp *proto.ReplayCache, fallback string) {
+func handle(c net.Conn, ring *Keyring, rp *proto.ReplayCache, fallback string) {
 	defer c.Close()
 	if tc, ok := c.(*tls.Conn); ok {
 		tc.SetDeadline(time.Now().Add(15 * time.Second))
@@ -87,7 +106,7 @@ func handle(c net.Conn, key []byte, rp *proto.ReplayCache, fallback string) {
 	}
 
 	br := bufio.NewReader(c)
-	out, in, target, err := proto.ServerHandshake(br, c, key, rp)
+	out, in, target, keyName, err := proto.ServerHandshakeMulti(br, c, ring.Keys(), rp)
 	switch {
 	case err == proto.ErrNoMagic:
 		log.Printf("%s: probe/http -> fallback", c.RemoteAddr())
@@ -97,6 +116,7 @@ func handle(c net.Conn, key []byte, rp *proto.ReplayCache, fallback string) {
 		log.Printf("%s: handshake rejected: %v", c.RemoteAddr(), err)
 		return
 	}
+	log.Printf("%s: key=%s -> %s", c.RemoteAddr(), keyName, target)
 
 	if target == "udp" {
 		log.Printf("%s: udp relay", c.RemoteAddr())

@@ -12,6 +12,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
+using Renci.SshNet;
 using System.Threading;
 using System.Windows.Forms;
 using Microsoft.Web.WebView2.Core;
@@ -70,6 +71,7 @@ namespace Veil
             Extract("Microsoft.Web.WebView2.Core.dll");
             Extract("Microsoft.Web.WebView2.WinForms.dll");
             Extract("WebView2Loader.dll");
+            Extract("Renci.SshNet.dll");
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -111,7 +113,7 @@ namespace Veil
 
     class Profile
     {
-        public string Key = "", Server = "", Sni = "", Fp = "chrome", Psk = "";
+        public string Key = "", Server = "", Sni = "", Fp = "chrome", Psk = "", Pin = "";
         public string Cc = "", Country = "", ExitIp = "";
         public int Ping;
         public string Title
@@ -142,6 +144,7 @@ namespace Veil
                 if (f.Length > 1) p.Cc = f[1];
                 if (f.Length > 2) p.Country = f[2];
                 if (f.Length > 3) p.ExitIp = f[3];
+                if (f.Length > 4) p.Pin = f[4].Trim();
                 list.Add(p);
             }
             return list;
@@ -150,7 +153,7 @@ namespace Veil
         public static void Save(List<Profile> list)
         {
             StringBuilder sb = new StringBuilder();
-            foreach (Profile p in list) sb.AppendLine(p.Key + "\t" + p.Cc + "\t" + p.Country + "\t" + p.ExitIp);
+            foreach (Profile p in list) sb.AppendLine(p.Key + "\t" + p.Cc + "\t" + p.Country + "\t" + p.ExitIp + "\t" + p.Pin);
             File.WriteAllText(File2, sb.ToString(), new UTF8Encoding(false));
         }
     }
@@ -221,6 +224,7 @@ namespace Veil
                 x.Sni = p[1].Length > 0 ? p[1] : p[0].Split(':')[0];
                 x.Fp = p[2].Length > 0 ? p[2] : "chrome";
                 x.Psk = p[3];
+                if (p.Length > 4) x.Pin = p[4].Trim();
                 return x;
             }
             catch { return null; }
@@ -342,6 +346,7 @@ namespace Veil
                 "psk    = " + p.Psk + "\n" +
                 "socks  = 127.0.0.1:1080\n" +
                 "fp     = " + p.Fp + "\n" +
+                (p.Pin.Length > 0 ? "pin    = " + p.Pin + "\n" : "") +
                 "direct  = " + (Settings.Split ? "true" : "false") + "\n", new UTF8Encoding(false));
         }
 
@@ -837,6 +842,75 @@ namespace Veil
                 AddKeyFromText(txt);
             }
             else if (cmd == "key-add") { AddKeyFromText(Json(raw, "key")); }
+            else if (cmd == "srv-install")
+            {
+                srvTarget = new SshTarget {
+                    Host = Json(raw, "host").Trim(), Port = IntOr(Json(raw, "port"), 22),
+                    User = string.IsNullOrEmpty(Json(raw, "user")) ? "root" : Json(raw, "user").Trim(),
+                    Password = Json(raw, "pass"), KeyPath = Json(raw, "keyfile")
+                };
+                string domain = Json(raw, "domain").Trim();
+                srvHost = srvTarget.Host; srvUser = srvTarget.User;
+                srvBusy = true; srvStatus = "Устанавливаю…"; srvKeys.Clear(); Push();
+                ThreadPool.QueueUserWorkItem(delegate { DoInstall(domain); });
+            }
+            else if (cmd == "srv-keys")
+            {
+                if (srvTarget == null) { srvStatus = "Сначала подключись к серверу"; Push(); return; }
+                srvBusy = true; srvStatus = "Читаю ключи…"; Push();
+                ThreadPool.QueueUserWorkItem(delegate {
+                    try
+                    {
+                        using (SshClient sc = ServerSetup.Connect(srvTarget))
+                        {
+                            srvKeys = ServerSetup.Keys(sc);
+                            srvStatus = "Ключей на сервере: " + srvKeys.Count;
+                        }
+                    }
+                    catch (Exception ex) { srvStatus = "Ошибка SSH: " + Short(ex); }
+                    srvBusy = false; Push();
+                });
+            }
+            else if (cmd == "srv-issue")
+            {
+                if (srvTarget == null) { srvStatus = "Сначала подключись к серверу"; Push(); return; }
+                string who = Json(raw, "name").Trim();
+                srvBusy = true; srvStatus = "Выдаю ключ…"; Push();
+                ThreadPool.QueueUserWorkItem(delegate {
+                    try
+                    {
+                        using (SshClient sc = ServerSetup.Connect(srvTarget))
+                        {
+                            string key = ServerSetup.Issue(sc, who, HostOf(srvTarget.Host), PortOf(srvTarget.Host, 443), SniOf(srvTarget.Host), srvPin);
+                            keyMsg = "Ключ для «" + who + "»: " + key;
+                            srvKeys = ServerSetup.Keys(sc);
+                            srvStatus = "Ключей на сервере: " + srvKeys.Count;
+                        }
+                    }
+                    catch (Exception ex) { srvStatus = "Ошибка SSH: " + Short(ex); }
+                    srvBusy = false; Push();
+                });
+            }
+            else if (cmd == "srv-revoke")
+            {
+                if (srvTarget == null) { srvStatus = "Сначала подключись к серверу"; Push(); return; }
+                string who = Json(raw, "name").Trim();
+                srvBusy = true; srvStatus = "Отзываю ключ…"; Push();
+                ThreadPool.QueueUserWorkItem(delegate {
+                    try
+                    {
+                        using (SshClient sc = ServerSetup.Connect(srvTarget))
+                        {
+                            ServerSetup.Revoke(sc, who);
+                            srvKeys = ServerSetup.Keys(sc);
+                            srvStatus = "Ключ «" + who + "» отозван";
+                        }
+                    }
+                    catch (Exception ex) { srvStatus = "Ошибка SSH: " + Short(ex); }
+                    srvBusy = false; Push();
+                });
+            }
+
             else if (cmd == "app-add")
             {
                 using (OpenFileDialog dlg = new OpenFileDialog())
@@ -980,6 +1054,72 @@ namespace Veil
             Push();
         }
 
+        SshTarget srvTarget = null;
+        string srvHost = "", srvUser = "", srvPin = "", srvStatus = "";
+        List<string> srvKeys = new List<string>();
+        bool srvBusy = false;
+
+        static int IntOr(string s, int def) { int v; return int.TryParse(s, out v) && v > 0 && v < 65536 ? v : def; }
+        static string Short(Exception ex) { string m = ex.Message; return m.Length > 160 ? m.Substring(0, 160) : m; }
+        static string HostOf(string s) { int i = s.LastIndexOf(':'); return i > 0 ? s.Substring(0, i) : s; }
+        static int PortOf(string s, int def) { int i = s.LastIndexOf(':'); int p; return i > 0 && int.TryParse(s.Substring(i + 1), out p) ? p : def; }
+        static string SniOf(string s) { return HostOf(s); }
+
+        void DoInstall(string domain)
+        {
+            try
+            {
+                byte[] bin = ReadResource("veil-server-linux");
+                string boot = System.Text.Encoding.UTF8.GetString(ReadResource("bootstrap.sh"));
+                if (bin == null || bin.Length < 1000) { srvStatus = "В сборке нет linux-бинарника"; srvBusy = false; Push(); return; }
+
+                using (SshClient sc = ServerSetup.Connect(srvTarget, 25))
+                {
+                    srvStatus = "Загружаю сервер…"; Push();
+                    string keyLine;
+                    string log = ServerSetup.Install(sc, bin, boot, domain, "", out keyLine);
+                    Program.Log("install log:\n" + (log.Length > 4000 ? log.Substring(log.Length - 4000) : log));
+
+                    if (keyLine.Length == 0) { srvStatus = "Установка не вернула ключ, смотри лог"; srvBusy = false; Push(); return; }
+
+                    string[] parts = keyLine.Split('|');
+                    string pay = parts[0];                       // server:port|sni|fp|psk
+                    string pin = parts.Length > 1 ? parts[1] : "";
+                    srvPin = pin;
+                    string full = ServerSetup.Encode(pay, pin);
+                    Profile p = Codec.ToProfile(full);
+                    if (p != null)
+                    {
+                        bool dup = false;
+                        foreach (Profile x in core.Profiles) if (x.Server == p.Server) dup = true;
+                        if (!dup) { core.Profiles.Add(p); Store.Save(core.Profiles); }
+                        core.Selected = core.Profiles.Count - 1;
+                    }
+                    srvKeys = ServerSetup.Keys(sc);
+                    srvStatus = "Сервер готов · ключей: " + srvKeys.Count + (pin.Length > 0 ? " · сертификат по отпечатку" : " · Let's Encrypt");
+                    keyMsg = "Ключ добавлен на главную";
+                }
+            }
+            catch (Exception ex) { srvStatus = "Ошибка: " + Short(ex); Program.Log("install: " + ex); }
+            srvBusy = false; Push();
+        }
+
+        static byte[] ReadResource(string suffix)
+        {
+            Assembly asm = Assembly.GetExecutingAssembly();
+            string res = null;
+            foreach (string n in asm.GetManifestResourceNames())
+                if (n.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)) { res = n; break; }
+            if (res == null) return null;
+            using (Stream s = asm.GetManifestResourceStream(res))
+            {
+                if (s == null) return null;
+                var ms = new MemoryStream();
+                s.CopyTo(ms);
+                return ms.ToArray();
+            }
+        }
+
         string BuildSnapshot()
         {
             StringBuilder sb = new StringBuilder();
@@ -1025,6 +1165,12 @@ namespace Veil
             }
             sb.Append("]");
             sb.Append(",\"keyMsg\":\"").Append(Esc(keyMsg)).Append("\"");
+            sb.Append(",\"srvStatus\":\"").Append(Esc(srvStatus)).Append("\"");
+            sb.Append(",\"srvBusy\":").Append(srvBusy ? "true" : "false");
+            sb.Append(",\"srvHost\":\"").Append(Esc(srvHost)).Append("\",\"srvUser\":\"").Append(Esc(srvUser)).Append("\"");
+            sb.Append(",\"srvKeys\":[");
+            for (int i = 0; i < srvKeys.Count; i++) { if (i > 0) sb.Append(','); sb.Append("\"").Append(Esc(srvKeys[i])).Append("\""); }
+            sb.Append("]");
             sb.Append(",\"error\":\"").Append(Esc(core.State == "error" ? "Клиент не поднялся, смотри лог" : "")).Append("\"");
             sb.Append("}}");
             return sb.ToString();
