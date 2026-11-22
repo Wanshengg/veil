@@ -936,7 +936,7 @@ namespace Veil
                 sb.Append("{\"id\":\"").Append(Esc(p.Server)).Append("\"")
                   .Append(",\"cc\":\"").Append(Esc(p.Cc.Length > 0 ? p.Cc : "IP")).Append("\"")
                   .Append(",\"country\":\"").Append(Esc(p.Country.Length > 0 ? p.Country : "По IP")).Append("\"")
-                  .Append(",\"city\":\"").Append(Esc(p.ExitIp.Length > 0 ? p.ExitIp : "ожидает проверки")).Append("\"")
+                  .Append(",\"city\":\"").Append(Esc(p.ExitIp.Length > 0 ? p.ExitIp : "по IP-адресу")).Append("\"")
                   .Append(",\"ping\":").Append(p == core.Current ? core.LastPing : 0)
                   .Append(",\"load\":0,\"fav\":false}");
             }

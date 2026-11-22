@@ -114,9 +114,9 @@
   const comp = {
     badge(s) {
       const map = {
-        connected: ["connected", "Защищено"],
+        connected: ["connected", "Подключено"],
         connecting: ["connecting", "Подключение"],
-        disconnected: ["disconnected", "Отключено"],
+        disconnected: ["disconnected", "Не подключено"],
         error: ["error", "Ошибка"],
         "no-internet": ["error", "Нет сети"],
       };
@@ -131,7 +131,7 @@
 
     ping(ms) {
       if (!ms) return `<span class="ping num faint">—</span>`;
-      const cls = ms < 50 ? "good" : ms < 100 ? "mid" : "bad";
+      const cls = ms < 80 ? "good" : ms < 160 ? "mid" : "bad";
       return `<span class="ping num ${cls}">${ms} ms</span>`;
     },
 
@@ -155,16 +155,16 @@
     },
 
     tile(s, active, connected) {
-      const load = s.load < 40 ? "свободен" : s.load < 70 ? "умеренно" : "загружен";
+      const load = s.load > 0 ? (s.load < 40 ? " · свободен" : s.load < 70 ? " · умеренно" : " · загружен") : "";
       return `
       <button class="tile" data-server="${s.id}" aria-pressed="${active}"
               aria-label="${esc(s.country + " · " + s.city + " · " + s.ping + " мс" + (active && connected ? " · подключено" : ""))}">
         <span class="tile-top">
           <span class="flag" aria-hidden="true">${s.cc}</span>
-          ${active && connected ? `<span class="tile-live" aria-hidden="true"></span>` : comp.ping(s.ping)}
+          ${comp.ping(s.ping)}
         </span>
-        <span class="tile-name">${esc(s.country)}</span>
-        <span class="tile-sub">${esc(s.city)} · ${load}</span>
+        <span class="tile-name">${active && connected ? `<span class="tile-live" aria-hidden="true"></span>` : ""}${esc(s.country)}</span>
+        <span class="tile-sub">${esc(s.city)}${load}</span>
         <span class="star tile-star" data-fav="${s.id}" role="button" aria-pressed="${s.fav}"
               aria-label="В избранное: ${esc(s.country)}">${icon.star(s.fav)}</span>
       </button>`;
@@ -215,84 +215,40 @@
   /* ── экраны ──────────────────────────────────────────────────────────── */
   const views = {
     home(snap, servers) {
-      const server = servers.find((x) => x.id === snap.serverId) || servers[0] || { country: "—", city: "—", cc: "--", ping: 0, load: 0 };
+      const server = servers.find((x) => x.id === snap.serverId) || servers[0] || null;
       const s = snap.state;
       const connected = s === "connected";
       const connecting = s === "connecting";
       const err = s === "error";
       const noNet = s === "no-internet";
 
-      const stateTitle = connected ? "Защищено" : connecting ? "Подключаемся…" : err ? "Не удалось подключиться" : noNet ? "Нет интернета" : "Не защищено";
-      const stateSub = connected
-        ? `Трафик идёт через <b>${esc(server.country)} · ${esc(server.city)}</b>`
-        : connecting
-          ? "Проверяем TLS-рукопожатие и маршрут"
-          : err
-            ? esc(snap.error || "Сервер не ответил, попробуй другой")
-            : noNet
-              ? "Проверь подключение к сети — туннель поднять нельзя"
-              : "Нажми плитку сервера ниже или большую кнопку";
-
-      const btnLabel = connected ? "Отключиться" : connecting ? "Отменяем…" : err ? "Повторить подключение" : "Подключиться";
-      const btnDisabled = connecting || noNet;
+      const title = connected ? `Подключено${server ? " · " + esc(server.country) : ""}`
+        : connecting ? "Подключаемся…"
+        : err ? "Не подключено — ошибка"
+        : noNet ? "Нет интернета"
+        : "Не подключено";
+      const sub = connected && server ? `${esc(server.city)} · ${server.ping} мс · ${comp.fmtClock(snap.traffic.uptime)}`
+        : connecting ? "проверяем TLS и маршрут"
+        : err ? esc(snap.error || "сервер не ответил, попробуй другой")
+        : noNet ? "сначала верни сеть — туннель не поднять"
+        : "нажми плитку сервера, чтобы подключиться";
 
       const tiles = servers.length
         ? servers.map((x) => comp.tile(x, x.id === snap.serverId, connected)).join("")
-        : comp.empty("Нет ключей", "Добавь ключ из буфера — сервер появится здесь.", `<button class="btn" data-action="add-key">＋ Добавить ключ</button>`);
+        : comp.empty("Нет ключей", "Добавь ключ veil:// в буфер и вставь его в приложении.",
+            `<button class="btn primary" data-action="add-key">＋ Добавить ключ</button>`);
 
       return `
       <section class="home">
-        <div class="hero">
-          <div class="donut" data-state="${err ? "error" : connecting ? "connecting" : connected ? "connected" : "idle"}">
-            <svg viewBox="0 0 200 200" aria-hidden="true">
-              <circle class="ring-base" cx="100" cy="100" r="86" fill="none" stroke-width="1"/>
-              <circle class="ring-base" cx="100" cy="100" r="72" fill="none" stroke-width="1" opacity="0.6"/>
-              <circle class="ring-pulse" cx="100" cy="100" r="79" fill="none" stroke-width="2.5" stroke-dasharray="120 620" stroke-linecap="round" transform="rotate(-90 100 100)" style="opacity:0"/>
-            </svg>
-            <button class="core" data-action="toggle" ${btnDisabled ? "disabled" : ""} aria-label="${btnLabel}">
-              <span class="glyph" aria-hidden="true">${connected ? icon.check : icon.power}</span>
-              <span class="label">${connected ? "вкл" : "выкл"}</span>
-            </button>
-          </div>
-
-          <div class="hero-status">
-            <div class="state">${stateTitle}</div>
-            <div class="where">${stateSub}</div>
-          </div>
-
-          <div class="hero-actions">
-            <button class="btn primary hero" data-action="toggle" ${btnDisabled ? "disabled" : ""}>${btnLabel}</button>
-          </div>
+        <div class="status-strip" data-state="${err ? "error" : connecting ? "connecting" : connected ? "connected" : "idle"}">
+          <span class="strip-dot" aria-hidden="true"></span>
+          <span class="strip-text">
+            <span class="strip-title">${title}</span>
+            <span class="strip-sub">${sub}</span>
+          </span>
+          ${connected ? `<button class="btn ghost strip-btn" data-action="toggle">Отключить</button>` : ""}
         </div>
-
-                  <div class="caps tiles-head">Серверы <span class="faint">· нажми плитку, чтобы подключиться</span></div>
-          <div class="tiles">${tiles}</div>
-
-<div class="side-col">
-          <div class="grid-2">
-            <div class="card flat">
-              <div class="caps">Пинг</div>
-              <div class="stat"><span class="value num">${server.ping}<span class="unit">ms</span></span></div>
-              <div class="faint" style="font-size:var(--fs-12)">${connected ? "стабильно" : "по последнему замеру"}</div>
-            </div>
-            <div class="card flat">
-              <div class="caps">Сессия</div>
-              <div class="stat"><span class="value num">${comp.fmtClock(snap.traffic.uptime)}</span></div>
-              <div class="faint" style="font-size:var(--fs-12)">${connected ? "соединение активно" : "не запущена"}</div>
-            </div>
-          </div>
-
-          <div class="card">
-            <div class="chart-wrap">
-              <div class="chart-head">
-                <span class="caps">Скорость</span>
-                <span class="num muted" style="font-size:var(--fs-13)">${icon.arrowDown} ${comp.fmtGB(snap.traffic.down)} · ${icon.arrowUp} ${comp.fmtGB(snap.traffic.up)} МБ/с</span>
-              </div>
-              ${comp.sparkline(snap.series.length > 1 ? snap.series : [0, 0])}
-            </div>
-          </div>
-
-        </div>
+        <div class="tiles">${tiles}</div>
       </section>`;
     },
 
