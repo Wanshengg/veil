@@ -707,6 +707,12 @@ namespace Veil
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
             Settings.Load();
+            try
+            {
+                using (Stream ico = System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream("veil.ico"))
+                    if (ico != null) Icon = new System.Drawing.Icon(ico);
+            }
+            catch { }
 
             web = new WebView2();
             web.Dock = DockStyle.Fill;
