@@ -648,18 +648,20 @@ body[data-overlay] .sheet { transform: translate(-50%, 0); }
 
 /* ── табы ──────────────────────────────────────────────────────────────── */
 .tabs {
-  display: flex;
-  justify-content: center;
-  gap: var(--s-2);
-  padding: var(--s-2) var(--s-2) calc(var(--s-2) + env(safe-area-inset-bottom));
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 2px;
+  padding: var(--s-2) var(--s-3) calc(var(--s-2) + env(safe-area-inset-bottom));
   border-top: 1px solid var(--border);
   background: color-mix(in srgb, var(--bg) 82%, transparent);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
 }
 .tab {
-  min-width: 132px;
+  min-width: 0;
   min-height: 52px;
+  padding: 6px 2px;
   border: 0;
   background: transparent;
   color: var(--text-3);
@@ -669,13 +671,14 @@ body[data-overlay] .sheet { transform: translate(-50%, 0); }
   display: grid;
   justify-items: center;
   align-content: center;
-  gap: 4px;
-  border-radius: var(--r-16);
+  gap: 3px;
+  border-radius: var(--r-12);
   cursor: pointer;
   transition: color var(--t-base) var(--ease), background var(--t-base) var(--ease);
 }
 .tab:hover { background: var(--layer-hover); }
-.tab[aria-selected="true"] { color: var(--text); background: var(--layer-2); }
+.tab svg { width: 19px; height: 19px; opacity: 0.9; }
+.tab[aria-selected="true"] { color: var(--text); background: var(--layer-2); box-shadow: 0 0 0 1px var(--border) inset; }
 .tab[aria-selected="true"] svg { color: var(--accent); }
 
 /* ── десктоп ───────────────────────────────────────────────────────────── */
