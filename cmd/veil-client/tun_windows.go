@@ -22,7 +22,7 @@ func startTUN(c *cfg) (func(), error) {
 	engine.Insert(&engine.Key{
 		Device:   "tun://" + tunName,
 		Proxy:    "socks5://127.0.0.1:1080",
-		MTU:      1500,
+		MTU:      mtuOf(c),
 		LogLevel: "warn",
 	})
 	engine.Start()
@@ -44,6 +44,13 @@ func startTUN(c *cfg) (func(), error) {
 	}
 	log.Printf("tun: default route through %q", tunName)
 	return cleanup, nil
+}
+
+func mtuOf(c *cfg) int {
+	if c.tunMTU >= 576 && c.tunMTU <= 1500 {
+		return c.tunMTU
+	}
+	return 1400
 }
 
 func waitAdapter(timeout time.Duration) error {
@@ -69,6 +76,8 @@ func configureAdapter(c *cfg) error {
 	// интерфейс должен побеждать по метрике, иначе другой VPN/шлюз останется главным
 	_ = run("netsh", "interface", "ipv4", "set", "interface",
 		"name="+tunName, "metric=1")
+	_ = run("netsh", "interface", "ipv4", "set", "subinterface",
+		tunName, "mtu="+strconv.Itoa(mtuOf(c)), "store=persistent")
 
 	// DNS внутри туннеля
 	_ = run("netsh", "interface", "ipv4", "set", "dnsservers",

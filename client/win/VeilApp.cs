@@ -152,7 +152,7 @@ namespace Veil
 
     static class Settings
     {
-        public static bool Split = true, KillSwitch = true, Autostart = false;
+        public static bool Split = true, KillSwitch = true, Autostart = false, Tun = false;
         public static string Dns = "Через туннель";
         public static string Theme = "dark";
 
@@ -169,6 +169,7 @@ namespace Veil
                 if (k == "split") Split = v != "0";
                 if (k == "kill") KillSwitch = v != "0";
                 if (k == "autostart") Autostart = v != "0";
+                if (k == "tun") Tun = v != "0";
                 if (k == "dns") Dns = v;
                 if (k == "theme") Theme = v;
             }
@@ -177,7 +178,8 @@ namespace Veil
         public static void Save()
         {
             File.WriteAllText(File2, "split=" + (Split ? "1" : "0") + "\nkill=" + (KillSwitch ? "1" : "0") +
-                "\nautostart=" + (Autostart ? "1" : "0") + "\ndns=" + Dns + "\ntheme=" + Theme + "\n");
+                "\nautostart=" + (Autostart ? "1" : "0") + "\ntun=" + (Tun ? "1" : "0") +
+                "\ndns=" + Dns + "\ntheme=" + Theme + "\n");
         }
 
         public static void ApplyAutostart()
@@ -303,16 +305,27 @@ namespace Veil
 
         public static void ExtractClient()
         {
+            ExtractRes("veil-client.exe", ClientPath, true);
+            // wintun нужен рядом с клиентом для TUN-режима
+            ExtractRes("wintun.dll", Path.Combine(Dir, "wintun.dll"), false);
+        }
+
+        static void ExtractRes(string suffix, string dst, bool required)
+        {
             Assembly asm = Assembly.GetExecutingAssembly();
             string name = null;
             foreach (string n in asm.GetManifestResourceNames())
-                if (n.EndsWith("veil-client.exe", StringComparison.OrdinalIgnoreCase)) { name = n; break; }
-            if (name == null) throw new Exception("embedded client not found");
+                if (n.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)) { name = n; break; }
+            if (name == null)
+            {
+                if (required) throw new Exception(suffix + " not embedded");
+                return;
+            }
             using (Stream s = asm.GetManifestResourceStream(name))
             {
-                if (File.Exists(ClientPath) && new FileInfo(ClientPath).Length == s.Length) return;
-                if (File.Exists(ClientPath)) File.Delete(ClientPath);
-                using (FileStream f = File.Create(ClientPath)) s.CopyTo(f);
+                if (File.Exists(dst) && new FileInfo(dst).Length == s.Length) return;
+                if (File.Exists(dst)) File.Delete(dst);
+                using (FileStream f = File.Create(dst)) s.CopyTo(f);
             }
         }
 
@@ -336,7 +349,9 @@ namespace Veil
                 try { old.Kill(); old.WaitForExit(2000); } catch { }
             }
             Thread.Sleep(200);
-            ProcessStartInfo psi = new ProcessStartInfo(ClientPath, "-config \"" + IniPath + "\"");
+            string args = "-config \"" + IniPath + "\"";
+            if (Settings.Tun) args += " -tun -tun-mtu 1400";
+            ProcessStartInfo psi = new ProcessStartInfo(ClientPath, args);
             psi.UseShellExecute = false;
             psi.CreateNoWindow = true;
             psi.RedirectStandardError = true;
@@ -541,9 +556,25 @@ namespace Veil
         public void Kill()
         {
             try { if (Proc != null && !Proc.HasExited) { Proc.Kill(); Proc.WaitForExit(2500); } } catch { }
+            if (Settings.Tun) CleanupTunRoute();
             Proc = null;
             SysProxy.Disable();
             if (State == "connected" || State == "connecting") State = "disconnected";
+        }
+
+        // жёсткое убийство клиента не даёт ему убрать маршрут — чистим сами
+        public static void CleanupTunRoute()
+        {
+            try
+            {
+                ProcessStartInfo psi = new ProcessStartInfo("route",
+                    "delete 0.0.0.0 mask 0.0.0.0 198.18.0.1");
+                psi.CreateNoWindow = true;
+                psi.UseShellExecute = false;
+                psi.RedirectStandardOutput = true;
+                Process.Start(psi);
+            }
+            catch { }
         }
 
         public void Tick()
@@ -664,8 +695,8 @@ namespace Veil
                 if (a.StartsWith("--tab=", StringComparison.OrdinalIgnoreCase)) openTab = a.Substring(6);
             }
             Text = "veil";
-            ClientSize = new Size(484, 700);
-            MinimumSize = new Size(420, 620);
+            ClientSize = new Size(486, 812);
+            MinimumSize = new Size(430, 700);
             StartPosition = FormStartPosition.CenterScreen;
             BackColor = Color.FromArgb(10, 12, 17);
             FormBorderStyle = FormBorderStyle.FixedSingle;
@@ -837,6 +868,21 @@ namespace Veil
                 if (k == "autostart") { Settings.Autostart = v == "true"; Settings.Save(); Settings.ApplyAutostart(); }
                 if (k == "dns") { Settings.Dns = v; Settings.Save(); }
                 if (k == "theme") { Settings.Theme = v; Settings.Save(); }
+                if (k == "tun")
+                {
+                    bool want = v == "true";
+                    if (want && !IsAdmin())
+                    {
+                        MessageBox.Show(this,
+                            "TUN-режим создаёт сетевой адаптер и требует прав администратора.\n\n" +
+                            "Закрой приложение и запусти его от имени администратора — тумблер станет рабочим.",
+                            "veil", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        Settings.Tun = false;
+                    }
+                    else Settings.Tun = want;
+                    Settings.Save();
+                    if (core.State == "connected") { core.Kill(); ThreadPool.QueueUserWorkItem(delegate { core.OpenTunnel(); BeginInvoke(new MethodInvoker(Push)); }); }
+                }
             }
             Push();
         }
@@ -855,6 +901,17 @@ namespace Veil
             int k = i;
             while (k < s.Length && ",}]".IndexOf(s[k]) < 0) k++;
             return s.Substring(i, k - i).Trim();
+        }
+
+        static bool IsAdmin()
+        {
+            try
+            {
+                System.Security.Principal.WindowsIdentity id = System.Security.Principal.WindowsIdentity.GetCurrent();
+                System.Security.Principal.WindowsPrincipal p = new System.Security.Principal.WindowsPrincipal(id);
+                return p.IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
+            }
+            catch { return false; }
         }
 
         void Push()
@@ -892,6 +949,7 @@ namespace Veil
             sb.Append(",\"settings\":{\"protocol\":\"veil · TLS 1.3\",\"killSwitch\":").Append(Settings.KillSwitch ? "true" : "false")
               .Append(",\"split\":").Append(Settings.Split ? "true" : "false")
               .Append(",\"autostart\":").Append(Settings.Autostart ? "true" : "false")
+              .Append(",\"tun\":").Append(Settings.Tun ? "true" : "false")
               .Append(",\"dns\":\"").Append(Esc(Settings.Dns)).Append("\"")
               .Append(",\"theme\":\"").Append(Esc(Settings.Theme)).Append("\"}");
             sb.Append(",\"series\":[");

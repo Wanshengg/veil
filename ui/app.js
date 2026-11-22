@@ -60,6 +60,7 @@
         killSwitch: true,
         split: true,
         autostart: false,
+        tun: false,
         dns: "Через туннель",
         theme: "dark",
       },
@@ -481,6 +482,7 @@
           <div class="caps group-title">Маршрутизация</div>
           <div class="card" style="padding:0">
             ${row("RU-сайты напрямую", "яндекс, госуслуги, банки — без туннеля", comp.toggle(s.split, "set-split", "RU-сайты напрямую"))}
+            ${row("TUN-режим", s.tun === undefined ? "нужен перезапуск от администратора" : "весь трафик ОС, включая игры и UDP", comp.toggle(!!s.tun, "set-tun", "TUN-режим"))}
             <div class="setting">
               <div class="label"><span>Список исключений</span><span class="sub">.ru · .рф · 12 доменов · 3 подсети</span></div>
               <button class="btn ghost" style="min-height:36px" data-action="sheet-rules">Изменить</button>
@@ -578,6 +580,7 @@
     else if (a === "set-kill") adapter.setSetting("killSwitch", !snap.settings.killSwitch);
     else if (a === "set-autostart") adapter.setSetting("autostart", !snap.settings.autostart);
     else if (a === "set-split") adapter.setSetting("split", !snap.settings.split);
+    else if (a === "set-tun") adapter.setSetting("tun", !snap.settings.tun);
     else if (a === "renew") toast("Переходим к оплате…", "ok");
     else if (a === "app-add") adapter.appAdd();
     else if (a === "app-run") adapter.appRun(action.dataset.path);

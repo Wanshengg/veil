@@ -36,6 +36,7 @@ type cfg struct {
 	insecure    bool
 	fp          string
 	rules       *rules.Rules
+	tunMTU      int
 
 	mu   sync.Mutex
 	good string
@@ -111,6 +112,7 @@ func main() {
 	rulesFile := flag.String("rules", "", "extra direct-rule file: domains or CIDRs, one per line")
 	cfgPath := flag.String("config", "", "optional key=value config file (flags win)")
 	tun := flag.Bool("tun", false, "route ALL system traffic through the tunnel (needs admin, wintun.dll)")
+	tunMTU := flag.Int("tun-mtu", 1400, "MTU of the TUN adapter (lower if the tunnel stalls)")
 	flag.Parse()
 	applyConfig(*cfgPath)
 
@@ -167,6 +169,7 @@ func main() {
 	}
 
 	if *tun {
+		c.tunMTU = *tunMTU
 		stopTUN, terr := startTUN(c)
 		if terr != nil {
 			log.Fatalf("veil-client: tun: %v", terr)
