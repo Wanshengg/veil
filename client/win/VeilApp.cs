@@ -904,7 +904,9 @@ namespace Veil
                     {
                         using (SshClient sc = ServerSetup.Connect(srvTarget))
                         {
-                            string key = ServerSetup.Issue(sc, who, HostOf(srvTarget.Host), PortOf(srvTarget.Host, 443), SniOf(srvTarget.Host), srvPin);
+                            string cn = ServerSetup.CertName(sc);
+                            string hostForKey = cn.Length > 0 ? cn : HostOf(srvTarget.Host);
+                            string key = ServerSetup.Issue(sc, who, hostForKey, PortOf(srvTarget.Host, 443), hostForKey, srvPin);
                             keyMsg = "Ключ для «" + who + "»: " + key;
                             srvKeys = ServerSetup.Keys(sc);
                             srvStatus = "Ключей на сервере: " + srvKeys.Count;

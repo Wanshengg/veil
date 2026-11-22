@@ -106,6 +106,14 @@ namespace Veil
         }
 
         // Отпечаток сертификата сервера — нужен для ключей к самоподписанным серверам.
+        // Имя из сертификата сервера — ключ всегда должен быть по домену, не по IP.
+        public static string CertName(SshClient c)
+        {
+            string outp = Run(c, "openssl x509 -in /opt/veil/certs/fullchain.pem -noout -subject 2>/dev/null | sed 's/.*CN *= *//' | tr -d ' '");
+            string cn = outp.Trim();
+            return cn.Length > 0 && cn.Length < 200 && cn.IndexOf('\n') < 0 ? cn : "";
+        }
+
         public static string Pin(SshClient c)
         {
             string outp = Run(c, "openssl x509 -in /opt/veil/certs/fullchain.pem -noout -fingerprint -sha256 2>/dev/null | sed 's/.*=//; s/://g' | tr 'A-Z' 'a-z'");
