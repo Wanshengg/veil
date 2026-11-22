@@ -261,8 +261,7 @@
       <section class="add">
         <div class="add-head">
           <div class="title">Соединение</div>
-          <div class="faint">Вставь ключ <b>veil://</b> — он появится на главной плиткой.
-            QR-кодов и файлов нет, только буфер обмена.</div>
+          <div class="faint">Вставь ключ <b>veil://</b> — он появится на главной плиткой.</div>
         </div>
 
         <div class="paste-row">
