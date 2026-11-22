@@ -12,6 +12,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
 	"sync"
@@ -109,6 +110,7 @@ func main() {
 	direct := flag.Bool("direct", true, "send Russian/local destinations straight to the internet (no tunnel)")
 	rulesFile := flag.String("rules", "", "extra direct-rule file: domains or CIDRs, one per line")
 	cfgPath := flag.String("config", "", "optional key=value config file (flags win)")
+	tun := flag.Bool("tun", false, "route ALL system traffic through the tunnel (needs admin, wintun.dll)")
 	flag.Parse()
 	applyConfig(*cfgPath)
 
@@ -162,6 +164,22 @@ func main() {
 				}
 			}()
 		}
+	}
+
+	if *tun {
+		stopTUN, terr := startTUN(c)
+		if terr != nil {
+			log.Fatalf("veil-client: tun: %v", terr)
+		}
+		defer stopTUN()
+		sig := make(chan os.Signal, 1)
+		signal.Notify(sig, os.Interrupt)
+		go func() {
+			<-sig
+			log.Printf("tun: shutting down")
+			stopTUN()
+			os.Exit(0)
+		}()
 	}
 
 	// Warm-up: find a working fingerprint before the first user request.
