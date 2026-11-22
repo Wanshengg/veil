@@ -19,6 +19,28 @@ const tunName = "veil"
 // startTUN поднимает виртуальный адаптер, заворачивает весь трафик в SOCKS-клиент
 // и настраивает маршруты. Возвращает функцию отката. Требует прав администратора.
 func startTUN(c *cfg) (func(), error) {
+	// Резолвим сервер ДО того, как весь DNS уйдёт в туннель: иначе клиент
+	// будет резолвить имя через собственный туннель и получит дедлок.
+	host, port, err := net.SplitHostPort(c.server)
+	if err != nil {
+		return nil, err
+	}
+	ips, rerr := net.LookupIP(host)
+	if rerr != nil || len(ips) == 0 {
+		return nil, fmt.Errorf("tun: не могу разрешить сервер %s: %v", host, rerr)
+	}
+	var v4 []string
+	for _, ip := range ips {
+		if i4 := ip.To4(); i4 != nil {
+			v4 = append(v4, i4.String())
+		}
+	}
+	if len(v4) == 0 {
+		return nil, fmt.Errorf("tun: у сервера нет IPv4")
+	}
+	c.server = net.JoinHostPort(v4[0], port)
+	log.Printf("tun: server pinned to %s (было %s)", c.server, host)
+
 	engine.Insert(&engine.Key{
 		Device:   "tun://" + tunName,
 		Proxy:    "socks5://127.0.0.1:1080",
@@ -80,18 +102,17 @@ func configureAdapter(c *cfg) error {
 		tunName, "mtu="+strconv.Itoa(mtuOf(c)), "store=persistent")
 
 	// DNS внутри туннеля
+	// DNS внутри туннеля: российский резолвер, чтобы RU-сайты получали локальные адреса,
+	// а сами запросы шли напрямую (77.88.8.8 есть в geoip-списке)
 	_ = run("netsh", "interface", "ipv4", "set", "dnsservers",
-		"name="+tunName, "source=static", "address=1.1.1.1", "register=primary")
+		"name="+tunName, "source=static", "address=77.88.8.8", "register=primary")
 
 	// исключение для самого сервера: иначе туннель уйдёт в петлю
 	host, _, err := net.SplitHostPort(c.server)
 	if err != nil {
 		return err
 	}
-	ips, err := net.LookupIP(host)
-	if err != nil || len(ips) == 0 {
-		return fmt.Errorf("tun: не могу разрешить сервер %s: %v", host, err)
-	}
+	ips := []net.IP{net.ParseIP(host)}
 	gw, ifIdx, gwName := defaultGateway()
 	if gw == "" {
 		return fmt.Errorf("tun: не найден физический шлюз")

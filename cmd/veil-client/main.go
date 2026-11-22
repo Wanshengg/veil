@@ -19,6 +19,7 @@ import (
 	"time"
 
 	utls "github.com/refraction-networking/utls"
+	"veil/internal/geoip"
 	"veil/internal/proto"
 	"veil/internal/rules"
 )
@@ -109,6 +110,7 @@ func main() {
 	fp := flag.String("fp", "chrome", "TLS fingerprint: chrome|firefox|safari|edge|random")
 	probe := flag.String("probe-hello", "", "dial this address with the utls fingerprint, then exit (self-check)")
 	direct := flag.Bool("direct", true, "send Russian/local destinations straight to the internet (no tunnel)")
+	geo := flag.Bool("geoip", true, "match Russian IP ranges (works in TUN mode, where only IPs are visible)")
 	rulesFile := flag.String("rules", "", "extra direct-rule file: domains or CIDRs, one per line")
 	cfgPath := flag.String("config", "", "optional key=value config file (flags win)")
 	tun := flag.Bool("tun", false, "route ALL system traffic through the tunnel (needs admin, wintun.dll)")
@@ -130,8 +132,12 @@ func main() {
 		sniName = h
 	}
 
+	var geoDB *geoip.DB
+	if *geo {
+		geoDB = geoip.RU()
+	}
 	c := &cfg{server: *server, sni: sniName, key: sum[:], insecure: *insecure, fp: *fp,
-		rules: rules.NewRules(*direct, *rulesFile)}
+		rules: rules.NewRules(*direct, *rulesFile, geoDB)}
 
 	if *probe != "" {
 		uc, err := dialTunnel(c, *probe, c.fp, 0)
@@ -147,7 +153,12 @@ func main() {
 	if err != nil {
 		log.Fatalf("veil-client: listen %s: %v", *socksAddr, err)
 	}
-	log.Printf("veil-client: SOCKS5/4 on %s -> %s (sni=%s fp=%s direct=%v)", *socksAddr, *server, sniName, *fp, *direct)
+	ruN := 0
+	if geoDB != nil {
+		ruN = geoDB.Len()
+	}
+	log.Printf("veil-client: SOCKS5/4 on %s -> %s (sni=%s fp=%s direct=%v, ru-prefixes=%d)",
+		*socksAddr, *server, sniName, *fp, *direct, ruN)
 
 	if *httpAddr != "" {
 		hl, herr := net.Listen("tcp", *httpAddr)

@@ -5,6 +5,8 @@ import (
 	"net"
 	"os"
 	"strings"
+
+	"veil/internal/geoip"
 )
 
 // builtinDirect is the default "keep it local" list: Russian TLDs and the
@@ -40,10 +42,11 @@ type Rules struct {
 	suffixes []string
 	nets     []*net.IPNet
 	enabled  bool
+	geo      *geoip.DB
 }
 
-func NewRules(enabled bool, extraFile string) *Rules {
-	r := &Rules{enabled: enabled}
+func NewRules(enabled bool, extraFile string, geo *geoip.DB) *Rules {
+	r := &Rules{enabled: enabled, geo: geo}
 	if !enabled {
 		return r
 	}
@@ -91,6 +94,9 @@ func (r *Rules) Direct(hostport string) bool {
 			if n.Contains(ip) {
 				return true
 			}
+		}
+		if r.geo != nil && r.geo.Contains(ip) {
+			return true
 		}
 		return false
 	}
