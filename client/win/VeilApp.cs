@@ -39,10 +39,12 @@ namespace Veil
             AppDomain.CurrentDomain.UnhandledException += delegate(object s, UnhandledExceptionEventArgs e)
             {
                 Log("fatal: " + e.ExceptionObject);
+                SysProxy.Disable();
             };
             AppDomain.CurrentDomain.AssemblyResolve += Resolve;
             try
             {
+                SysProxy.RestoreIfStale();   // убрать висящий прокси прошлого запуска
                 ExtractAll();      // разложить DLL до первого обращения к WebView2
                 InitLoader();      // теперь тип CoreWebView2Environment доступен
                 string srvTest = ArgOf(Environment.GetCommandLineArgs(), "--srv-test=");
@@ -309,6 +311,29 @@ namespace Veil
             }
             catch { }
             Refresh();
+        }
+
+        // Если приложение упало, в реестре остаётся наш прокси без живого клиента —
+        // браузеры показывают «нет подключения». Возвращаем как было при старте.
+        public static void RestoreIfStale()
+        {
+            try
+            {
+                using (RegistryKey k = Registry.CurrentUser.OpenSubKey(RegPath, false))
+                {
+                    if (k == null) return;
+                    int en = Convert.ToInt32(k.GetValue("ProxyEnable", 0));
+                    string srv = Convert.ToString(k.GetValue("ProxyServer", ""));
+                    bool ours = en == 1 && srv.IndexOf("127.0.0.1:8081", StringComparison.Ordinal) >= 0;
+                    bool clientUp = Process.GetProcessesByName("veil-client").Length > 0;
+                    if (ours && !clientUp)
+                    {
+                        Program.Log("proxy: найден наш висящий прокси, восстанавливаю");
+                        Disable();
+                    }
+                }
+            }
+            catch (Exception ex) { Program.Log("proxy restore: " + ex.Message); }
         }
 
         public static void Disable()
@@ -925,7 +950,7 @@ namespace Veil
                             srvStatus = "Подключено · ключей: " + srvKeys.Count;
                         }
                     }
-                    catch (Exception ex) { srvStatus = "Ошибка SSH: " + Short(ex); }
+                    catch (Exception ex) { srvStatus = SshError(ex); }
                     srvBusy = false; PushSafe();
                 });
             }
@@ -942,7 +967,7 @@ namespace Veil
                             srvStatus = "Ключей на сервере: " + srvKeys.Count;
                         }
                     }
-                    catch (Exception ex) { srvStatus = "Ошибка SSH: " + Short(ex); }
+                    catch (Exception ex) { srvStatus = SshError(ex); }
                     srvBusy = false; PushSafe();
                 });
             }
@@ -964,7 +989,7 @@ namespace Veil
                             srvStatus = "Ключей на сервере: " + srvKeys.Count;
                         }
                     }
-                    catch (Exception ex) { srvStatus = "Ошибка SSH: " + Short(ex); }
+                    catch (Exception ex) { srvStatus = SshError(ex); }
                     srvBusy = false; PushSafe();
                 });
             }
@@ -983,7 +1008,7 @@ namespace Veil
                             srvStatus = "Ключ «" + who + "» отозван";
                         }
                     }
-                    catch (Exception ex) { srvStatus = "Ошибка SSH: " + Short(ex); }
+                    catch (Exception ex) { srvStatus = SshError(ex); }
                     srvBusy = false; PushSafe();
                 });
             }
@@ -1150,6 +1175,17 @@ namespace Veil
 
         static int IntOr(string s, int def) { int v; return int.TryParse(s, out v) && v > 0 && v < 65536 ? v : def; }
         static string Short(Exception ex) { string m = ex.Message; return m.Length > 160 ? m.Substring(0, 160) : m; }
+
+        // Понятный текст вместо «Permission denied (password)»
+        static string SshError(Exception ex)
+        {
+            string m = ex.Message ?? "";
+            if (ex is Renci.SshNet.Common.SshAuthenticationException || m.IndexOf("Permission denied", StringComparison.OrdinalIgnoreCase) >= 0)
+                return "SSH не принял логин/пароль. На Ubuntu вход root по паролю обычно выключен — укажи путь к ключу или включи PasswordAuthentication";
+            if (ex is System.Net.Sockets.SocketException || m.IndexOf("connect", StringComparison.OrdinalIgnoreCase) >= 0)
+                return "Не удалось связаться с сервером по SSH: " + m + ". Проверь адрес, порт 22 и что сервер доступен";
+            return "Ошибка SSH: " + Short(ex);
+        }
         static string HostOf(string s) { int i = s.LastIndexOf(':'); return i > 0 ? s.Substring(0, i) : s; }
         static int PortOf(string s, int def) { int i = s.LastIndexOf(':'); int p; return i > 0 && int.TryParse(s.Substring(i + 1), out p) ? p : def; }
         static string SniOf(string s) { return HostOf(s); }
@@ -1189,7 +1225,7 @@ namespace Veil
                     keyMsg = "Ключ добавлен на главную";
                 }
             }
-            catch (Exception ex) { srvStatus = "Ошибка: " + Short(ex); Program.Log("install: " + ex); }
+            catch (Exception ex) { srvStatus = SshError(ex); Program.Log("install: " + ex); }
             srvBusy = false; PushSafe();
         }
 
