@@ -45,6 +45,8 @@ namespace Veil
             {
                 ExtractAll();      // разложить DLL до первого обращения к WebView2
                 InitLoader();      // теперь тип CoreWebView2Environment доступен
+                string srvTest = ArgOf(Environment.GetCommandLineArgs(), "--srv-test=");
+                if (srvTest.Length > 0) { RunServerTest(srvTest); return; }
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);
                 Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
@@ -55,6 +57,50 @@ namespace Veil
             {
                 Log("main: " + ex);
                 MessageBox.Show(ex.ToString(), "veil — ошибка запуска");
+            }
+        }
+
+        static string ArgOf(string[] args, string prefix)
+        {
+            foreach (string a in args) if (a.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return a.Substring(prefix.Length);
+            return "";
+        }
+
+        // Диагностика SSH/ключей без интерфейса: veil.exe --srv-test=C:\path\srv.txt
+        // файл: host=..., port=22, user=root, key=... или pass=...
+        static void RunServerTest(string cfgPath)
+        {
+            try
+            {
+                SshTarget t = new SshTarget();
+                foreach (string raw in File.ReadAllLines(cfgPath))
+                {
+                    string line = raw.Trim();
+                    if (line.Length == 0 || line.StartsWith("#")) continue;
+                    int i = line.IndexOf('=');
+                    if (i < 0) continue;
+                    string k = line.Substring(0, i).Trim().ToLowerInvariant();
+                    string v = line.Substring(i + 1).Trim();
+                    if (k == "host") t.Host = v;
+                    else if (k == "port") t.Port = Convert.ToInt32(v);
+                    else if (k == "user") t.User = v;
+                    else if (k == "key") t.KeyPath = v;
+                    else if (k == "pass") t.Password = v;
+                }
+                Log("srv-test: connecting " + t.Host + " as " + t.User + " key=" + t.KeyPath);
+                using (SshClient sc = ServerSetup.Connect(t))
+                {
+                    Log("srv-test: ok");
+                    Log("srv-test: cn=" + ServerSetup.CertName(sc));
+                    Log("srv-test: pin=" + ServerSetup.Pin(sc));
+                    Log("srv-test: keys=" + string.Join(",", ServerSetup.Keys(sc)));
+                }
+                MessageBox.Show("SSH ok", "veil — тест сервера");
+            }
+            catch (Exception ex)
+            {
+                Log("srv-test: FAILED " + ex);
+                MessageBox.Show(ex.ToString(), "veil — тест сервера");
             }
         }
 
@@ -72,6 +118,12 @@ namespace Veil
             Extract("Microsoft.Web.WebView2.WinForms.dll");
             Extract("WebView2Loader.dll");
             Extract("Renci.SshNet.dll");
+            Extract("BouncyCastle.Cryptography.dll");
+            Extract("System.Numerics.Vectors.dll");
+            Extract("System.Runtime.CompilerServices.Unsafe.dll");
+            Extract("System.Buffers.dll");
+            Extract("System.Memory.dll");
+            Extract("Microsoft.Bcl.AsyncInterfaces.dll");
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -796,7 +848,7 @@ namespace Veil
             FormClosing += delegate { core.Kill(); };
 
             timer.Interval = 1000;
-            timer.Tick += delegate { core.Tick(); if (ready) Push(); };
+            timer.Tick += delegate { core.Tick(); if (ready) PushSafe(); };
             timer.Start();
         }
 
@@ -820,7 +872,7 @@ namespace Veil
             string raw = e.WebMessageAsJson;
             string cmd = Json(raw, "cmd");
             Program.Log("msg: " + raw);
-            if (cmd == "ready") { ready = true; Push(); return; }
+            if (cmd == "ready") { ready = true; PushSafe(); return; }
             if (cmd == "connect")
             {
                 if (core.State == "connected") core.Kill();
@@ -851,7 +903,7 @@ namespace Veil
                 };
                 string domain = Json(raw, "domain").Trim();
                 srvHost = srvTarget.Host; srvUser = srvTarget.User;
-                srvBusy = true; srvStatus = "Устанавливаю…"; srvKeys.Clear(); Push();
+                srvBusy = true; srvStatus = "Устанавливаю…"; srvKeys.Clear(); PushSafe();
                 ThreadPool.QueueUserWorkItem(delegate { DoInstall(domain); });
             }
             else if (cmd == "srv-connect")
@@ -862,7 +914,7 @@ namespace Veil
                     Password = Json(raw, "pass"), KeyPath = Json(raw, "keyfile")
                 };
                 srvHost = srvTarget.Host; srvUser = srvTarget.User;
-                srvBusy = true; srvStatus = "Подключаюсь по SSH…"; Push();
+                srvBusy = true; srvStatus = "Подключаюсь по SSH…"; PushSafe();
                 ThreadPool.QueueUserWorkItem(delegate {
                     try
                     {
@@ -874,13 +926,13 @@ namespace Veil
                         }
                     }
                     catch (Exception ex) { srvStatus = "Ошибка SSH: " + Short(ex); }
-                    srvBusy = false; Push();
+                    srvBusy = false; PushSafe();
                 });
             }
             else if (cmd == "srv-keys")
             {
-                if (srvTarget == null) { srvStatus = "Сначала подключись к серверу"; Push(); return; }
-                srvBusy = true; srvStatus = "Читаю ключи…"; Push();
+                if (srvTarget == null) { srvStatus = "Сначала подключись к серверу"; PushSafe(); return; }
+                srvBusy = true; srvStatus = "Читаю ключи…"; PushSafe();
                 ThreadPool.QueueUserWorkItem(delegate {
                     try
                     {
@@ -891,14 +943,14 @@ namespace Veil
                         }
                     }
                     catch (Exception ex) { srvStatus = "Ошибка SSH: " + Short(ex); }
-                    srvBusy = false; Push();
+                    srvBusy = false; PushSafe();
                 });
             }
             else if (cmd == "srv-issue")
             {
-                if (srvTarget == null) { srvStatus = "Сначала подключись к серверу"; Push(); return; }
+                if (srvTarget == null) { srvStatus = "Сначала подключись к серверу"; PushSafe(); return; }
                 string who = Json(raw, "name").Trim();
-                srvBusy = true; srvStatus = "Выдаю ключ…"; Push();
+                srvBusy = true; srvStatus = "Выдаю ключ…"; PushSafe();
                 ThreadPool.QueueUserWorkItem(delegate {
                     try
                     {
@@ -913,14 +965,14 @@ namespace Veil
                         }
                     }
                     catch (Exception ex) { srvStatus = "Ошибка SSH: " + Short(ex); }
-                    srvBusy = false; Push();
+                    srvBusy = false; PushSafe();
                 });
             }
             else if (cmd == "srv-revoke")
             {
-                if (srvTarget == null) { srvStatus = "Сначала подключись к серверу"; Push(); return; }
+                if (srvTarget == null) { srvStatus = "Сначала подключись к серверу"; PushSafe(); return; }
                 string who = Json(raw, "name").Trim();
-                srvBusy = true; srvStatus = "Отзываю ключ…"; Push();
+                srvBusy = true; srvStatus = "Отзываю ключ…"; PushSafe();
                 ThreadPool.QueueUserWorkItem(delegate {
                     try
                     {
@@ -932,7 +984,7 @@ namespace Veil
                         }
                     }
                     catch (Exception ex) { srvStatus = "Ошибка SSH: " + Short(ex); }
-                    srvBusy = false; Push();
+                    srvBusy = false; PushSafe();
                 });
             }
 
@@ -1009,7 +1061,7 @@ namespace Veil
                     if (core.State == "connected") { core.Kill(); ThreadPool.QueueUserWorkItem(delegate { core.OpenTunnel(); BeginInvoke(new MethodInvoker(Push)); }); }
                 }
             }
-            Push();
+            PushSafe();
         }
 
         static string Json(string s, string key)
@@ -1039,6 +1091,18 @@ namespace Veil
             catch { return false; }
         }
 
+        // Push вызывается и из фоновых потоков — WebView2 требует UI-поток
+        void PushSafe()
+        {
+            try
+            {
+                if (!IsHandleCreated) return;
+                if (InvokeRequired) BeginInvoke(new MethodInvoker(PushSafe));
+                else Push();
+            }
+            catch (Exception ex) { Program.Log("push-safe: " + ex.Message); }
+        }
+
         void Push()
         {
             if (!ready || web.CoreWebView2 == null) return;
@@ -1056,27 +1120,27 @@ namespace Veil
         void AddKeyFromText(string text)
         {
             if (string.IsNullOrWhiteSpace(text) || text.IndexOf("veil://", StringComparison.OrdinalIgnoreCase) < 0)
-            { keyMsg = "В буфере нет ключа veil://"; Push(); return; }
+            { keyMsg = "В буфере нет ключа veil://"; PushSafe(); return; }
 
             Profile p = Codec.ToProfile(text);
-            if (p == null) { keyMsg = "Ключ не распознан — проверь, что скопирован целиком"; Push(); return; }
+            if (p == null) { keyMsg = "Ключ не распознан — проверь, что скопирован целиком"; PushSafe(); return; }
 
             string host = p.Server;
             int colon = host.LastIndexOf(':');
             if (colon > 0) host = host.Substring(0, colon);
             IPAddress ip;
             if (IPAddress.TryParse(host, out ip))
-            { keyMsg = "Ключи по IP не поддерживаются — нужен домен"; Push(); return; }
+            { keyMsg = "Ключи по IP не поддерживаются — нужен домен"; PushSafe(); return; }
 
             foreach (Profile x in core.Profiles)
                 if (string.Equals(x.Server, p.Server, StringComparison.OrdinalIgnoreCase))
-                { keyMsg = "Этот ключ уже добавлен"; Push(); return; }
+                { keyMsg = "Этот ключ уже добавлен"; PushSafe(); return; }
 
             core.Profiles.Add(p);
             core.Selected = core.Profiles.Count - 1;
             Store.Save(core.Profiles);
             keyMsg = "Добавлено: " + p.Server;
-            Push();
+            PushSafe();
         }
 
         SshTarget srvTarget = null;
@@ -1096,16 +1160,16 @@ namespace Veil
             {
                 byte[] bin = ReadResource("veil-server-linux");
                 string boot = System.Text.Encoding.UTF8.GetString(ReadResource("bootstrap.sh"));
-                if (bin == null || bin.Length < 1000) { srvStatus = "В сборке нет linux-бинарника"; srvBusy = false; Push(); return; }
+                if (bin == null || bin.Length < 1000) { srvStatus = "В сборке нет linux-бинарника"; srvBusy = false; PushSafe(); return; }
 
                 using (SshClient sc = ServerSetup.Connect(srvTarget, 25))
                 {
-                    srvStatus = "Загружаю сервер…"; Push();
+                    srvStatus = "Загружаю сервер…"; PushSafe();
                     string keyLine;
                     string log = ServerSetup.Install(sc, bin, boot, domain, "", out keyLine);
                     Program.Log("install log:\n" + (log.Length > 4000 ? log.Substring(log.Length - 4000) : log));
 
-                    if (keyLine.Length == 0) { srvStatus = "Установка не вернула ключ, смотри лог"; srvBusy = false; Push(); return; }
+                    if (keyLine.Length == 0) { srvStatus = "Установка не вернула ключ, смотри лог"; srvBusy = false; PushSafe(); return; }
 
                     string[] parts = keyLine.Split('|');
                     string pay = parts[0];                       // server:port|sni|fp|psk
@@ -1126,7 +1190,7 @@ namespace Veil
                 }
             }
             catch (Exception ex) { srvStatus = "Ошибка: " + Short(ex); Program.Log("install: " + ex); }
-            srvBusy = false; Push();
+            srvBusy = false; PushSafe();
         }
 
         static byte[] ReadResource(string suffix)

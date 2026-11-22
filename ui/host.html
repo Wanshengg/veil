@@ -1246,6 +1246,7 @@ body[data-overlay] .sheet { transform: translate(-50%, 0); }
             ${field("srvPort", "Порт SSH", "22", "22", "number")}
             ${field("srvUser", "Пользователь", "root", snap.srvUser || "root")}
             ${field("srvPass", "Пароль", "пароль root", "", "password")}
+            ${field("srvKey", "Или путь к ключу", "C:\\Users\\you\\.ssh\\id_ed25519", "")}
             ${field("srvDomain", "Домен (необязательно)", "veil.example.com — для Let's Encrypt", "")}
           </div>
           <div class="srv-buttons">
@@ -1432,13 +1433,13 @@ body[data-overlay] .sheet { transform: translate(-50%, 0); }
       const root = action.closest("section");
       const val = (id) => { const el = root.querySelector("#" + id); return el ? el.value.trim() : ""; };
       adapter.srvInstall({ host: val("srvHost"), port: val("srvPort") || "22", user: val("srvUser") || "root",
-                           pass: val("srvPass"), keyfile: "", domain: val("srvDomain") });
+                           pass: val("srvPass"), keyfile: val("srvKey"), domain: val("srvDomain") });
     }
     else if (a === "srv-connect") {
       const root = action.closest("section");
       const val = (id) => { const el = root.querySelector("#" + id); return el ? el.value.trim() : ""; };
       adapter.srvConnect({ host: val("srvHost"), port: val("srvPort") || "22", user: val("srvUser") || "root",
-                           pass: val("srvPass"), keyfile: "" });
+                           pass: val("srvPass"), keyfile: val("srvKey") });
     }
     else if (a === "srv-issue") {
       const root = action.closest("section");
