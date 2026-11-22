@@ -38,6 +38,7 @@ type cfg struct {
 	fp          string
 	rules       *rules.Rules
 	tunMTU      int
+	serverIPPin string
 	directIP    net.IP // адрес физического интерфейса для «прямых» соединений
 
 	mu   sync.Mutex
@@ -116,6 +117,7 @@ func main() {
 	cfgPath := flag.String("config", "", "optional key=value config file (flags win)")
 	tun := flag.Bool("tun", false, "route ALL system traffic through the tunnel (needs admin, wintun.dll)")
 	tunMTU := flag.Int("tun-mtu", 1400, "MTU of the TUN adapter (lower if the tunnel stalls)")
+	serverIP := flag.String("server-ip", "", "pin server IP, skip DNS (needed if another VPN hijacks DNS)")
 	flag.Parse()
 	applyConfig(*cfgPath)
 
@@ -138,6 +140,7 @@ func main() {
 		geoDB = geoip.RU()
 	}
 	c := &cfg{server: *server, sni: sniName, key: sum[:], insecure: *insecure, fp: *fp,
+		serverIPPin: *serverIP,
 		rules: rules.NewRules(*direct, *rulesFile, geoDB)}
 
 	if *probe != "" {

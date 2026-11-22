@@ -25,14 +25,22 @@ func startTUN(c *cfg) (func(), error) {
 	if err != nil {
 		return nil, err
 	}
-	ips, rerr := net.LookupIP(host)
-	if rerr != nil || len(ips) == 0 {
-		return nil, fmt.Errorf("tun: не могу разрешить сервер %s: %v", host, rerr)
-	}
 	var v4 []string
-	for _, ip := range ips {
-		if i4 := ip.To4(); i4 != nil {
-			v4 = append(v4, i4.String())
+	if c.serverIPPin != "" {
+		// чужой VPN (Karing) отдаёт fake-IP по DNS — берём адрес из конфига
+		if p := net.ParseIP(c.serverIPPin); p != nil && p.To4() != nil {
+			v4 = append(v4, p.String())
+		}
+	}
+	if len(v4) == 0 {
+		ips, rerr := net.LookupIP(host)
+		if rerr != nil || len(ips) == 0 {
+			return nil, fmt.Errorf("tun: не могу разрешить сервер %s: %v", host, rerr)
+		}
+		for _, ip := range ips {
+			if i4 := ip.To4(); i4 != nil {
+				v4 = append(v4, i4.String())
+			}
 		}
 	}
 	if len(v4) == 0 {
@@ -61,9 +69,12 @@ func startTUN(c *cfg) (func(), error) {
 		return nil, err
 	}
 	if err := configureAdapter(c); err != nil {
-		cleanup()
+		engine.Stop()
 		return nil, err
 	}
+	// Сторож: если трафик через адаптер не пошёл, машина осталась бы без сети.
+	// Через 12 секунд проверяем реальный проход по TUN и сами откатываем маршруты.
+	go tunGuard(c)
 	log.Printf("tun: default route through %q", tunName)
 	return cleanup, nil
 }
@@ -151,6 +162,48 @@ func tunIndex() int {
 
 func removeRoutes() {
 	_ = run("route", "delete", "0.0.0.0", "mask", "0.0.0.0", "198.18.0.1")
+}
+
+// tunGuard проверяет, что трафик реально идёт через адаптер, и откатывает
+// маршруты, если туннель не поднялся: иначе пользователь остаётся без интернета.
+func tunGuard(c *cfg) {
+	for i := 0; i < 3; i++ {
+		time.Sleep(4 * time.Second)
+		if !routeOwned() {
+			log.Printf("tun: default route принадлежит другому адаптеру (Karing/Amnezia?) — TUN не включён")
+			removeRoutes()
+			engine.Stop()
+			return
+		}
+		if tunReachable() {
+			log.Printf("tun: трафик через адаптер идёт (проверка %d/3)", i+1)
+			return
+		}
+	}
+	log.Printf("tun: трафик через адаптер НЕ идёт — откатываю маршруты, работаю как прокси")
+	removeRoutes()
+	engine.Stop()
+}
+
+// routeOwned — реально ли наш маршрут выигрывает по метрике.
+func routeOwned() bool {
+	out := output("powershell", "-NoProfile", "-Command",
+		"(Get-NetRoute -DestinationPrefix '0.0.0.0/0' | Sort-Object RouteMetric | "+
+			"Select-Object -First 1).NextHop")
+	return strings.TrimSpace(out) == "198.18.0.1"
+}
+
+// tunReachable — сквозная проверка: соединение уходит в адаптер, tun2socks
+// заворачивает его в SOCKS, дальше в туннель.
+func tunReachable() bool {
+	for _, target := range []string{"1.1.1.1:443", "8.8.8.8:443"} {
+		conn, err := net.DialTimeout("tcp", target, 4*time.Second)
+		if err == nil {
+			conn.Close()
+			return true
+		}
+	}
+	return false
 }
 
 // ifaceIPv4 — первый IPv4-адрес интерфейса по ifIndex.
