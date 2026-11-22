@@ -105,6 +105,14 @@ namespace Veil
             return list;
         }
 
+        // Отпечаток сертификата сервера — нужен для ключей к самоподписанным серверам.
+        public static string Pin(SshClient c)
+        {
+            string outp = Run(c, "openssl x509 -in /opt/veil/certs/fullchain.pem -noout -fingerprint -sha256 2>/dev/null | sed 's/.*=//; s/://g' | tr 'A-Z' 'a-z'");
+            string pin = outp.Trim();
+            return pin.Length == 64 ? pin : "";
+        }
+
         public static string RandomPsk()
         {
             const string alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";

@@ -777,3 +777,5 @@ body[data-overlay] .sheet { transform: translate(-50%, 0); }
   font-size: var(--fs-13);
   outline: none;
 }
+.srv-buttons { display: flex; gap: var(--s-2); flex-wrap: wrap; }
+.srv-buttons .btn { flex: 1; min-width: 150px; }

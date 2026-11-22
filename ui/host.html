@@ -877,6 +877,8 @@ body[data-overlay] .sheet { transform: translate(-50%, 0); }
   font-size: var(--fs-13);
   outline: none;
 }
+.srv-buttons { display: flex; gap: var(--s-2); flex-wrap: wrap; }
+.srv-buttons .btn { flex: 1; min-width: 150px; }
 
 </style>
 </head>
@@ -1039,6 +1041,7 @@ body[data-overlay] .sheet { transform: translate(-50%, 0); }
       srvKeys() { snap.srvStatus = "Макет: ключи не читаются"; emit(); },
       srvIssue() { snap.srvStatus = "Макет: ключ не выдаётся"; emit(); },
       srvRevoke() { snap.srvStatus = "Макет: ключ не отзывается"; emit(); },
+      srvConnect() { snap.srvStatus = "Макет: SSH недоступен"; emit(); },
       keyPaste() { snap.keyMsg = "Макет: ключ из буфера не читается"; emit(); },
       keyAdd() { snap.keyMsg = "Макет: ключ не добавляется"; emit(); },
       refresh() { emit(); },
@@ -1245,9 +1248,12 @@ body[data-overlay] .sheet { transform: translate(-50%, 0); }
             ${field("srvPass", "Пароль", "пароль root", "", "password")}
             ${field("srvDomain", "Домен (необязательно)", "veil.example.com — для Let's Encrypt", "")}
           </div>
-          <button class="btn primary" data-action="srv-install" ${busy ? "disabled" : ""}>
-            ${busy ? "Устанавливаю…" : "Установить сервер"}
-          </button>
+          <div class="srv-buttons">
+            <button class="btn primary" data-action="srv-install" ${busy ? "disabled" : ""}>
+              ${busy ? "Устанавливаю…" : "Установить сервер"}
+            </button>
+            <button class="btn" data-action="srv-connect" ${busy ? "disabled" : ""}>Только подключиться</button>
+          </div>
           <div class="srv-note faint">
             Без домена сервер получит самоподписанный сертификат, а клиент будет
             проверять его по отпечатку — шифрование то же, маскировка слабее.
@@ -1428,6 +1434,12 @@ body[data-overlay] .sheet { transform: translate(-50%, 0); }
       adapter.srvInstall({ host: val("srvHost"), port: val("srvPort") || "22", user: val("srvUser") || "root",
                            pass: val("srvPass"), keyfile: "", domain: val("srvDomain") });
     }
+    else if (a === "srv-connect") {
+      const root = action.closest("section");
+      const val = (id) => { const el = root.querySelector("#" + id); return el ? el.value.trim() : ""; };
+      adapter.srvConnect({ host: val("srvHost"), port: val("srvPort") || "22", user: val("srvUser") || "root",
+                           pass: val("srvPass"), keyfile: "" });
+    }
     else if (a === "srv-issue") {
       const root = action.closest("section");
       const el = root.querySelector("#srvNewKey");
@@ -1580,6 +1592,8 @@ body[data-overlay] .sheet { transform: translate(-50%, 0); }
     keyAdd: (key) => post({ cmd: "key-add", key }),
     srvInstall: (cfg) => post({ cmd: "srv-install", host: cfg.host, port: String(cfg.port), user: cfg.user,
                                pass: cfg.pass, keyfile: cfg.keyfile, domain: cfg.domain }),
+    srvConnect: (cfg) => post({ cmd: "srv-connect", host: cfg.host, port: String(cfg.port), user: cfg.user,
+                               pass: cfg.pass, keyfile: cfg.keyfile }),
     srvKeys: () => post({ cmd: "srv-keys" }),
     srvIssue: (name) => post({ cmd: "srv-issue", name }),
     srvRevoke: (name) => post({ cmd: "srv-revoke", name }),

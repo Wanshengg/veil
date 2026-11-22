@@ -107,6 +107,7 @@
       srvKeys() { snap.srvStatus = "Макет: ключи не читаются"; emit(); },
       srvIssue() { snap.srvStatus = "Макет: ключ не выдаётся"; emit(); },
       srvRevoke() { snap.srvStatus = "Макет: ключ не отзывается"; emit(); },
+      srvConnect() { snap.srvStatus = "Макет: SSH недоступен"; emit(); },
       keyPaste() { snap.keyMsg = "Макет: ключ из буфера не читается"; emit(); },
       keyAdd() { snap.keyMsg = "Макет: ключ не добавляется"; emit(); },
       refresh() { emit(); },
@@ -313,9 +314,12 @@
             ${field("srvPass", "Пароль", "пароль root", "", "password")}
             ${field("srvDomain", "Домен (необязательно)", "veil.example.com — для Let's Encrypt", "")}
           </div>
-          <button class="btn primary" data-action="srv-install" ${busy ? "disabled" : ""}>
-            ${busy ? "Устанавливаю…" : "Установить сервер"}
-          </button>
+          <div class="srv-buttons">
+            <button class="btn primary" data-action="srv-install" ${busy ? "disabled" : ""}>
+              ${busy ? "Устанавливаю…" : "Установить сервер"}
+            </button>
+            <button class="btn" data-action="srv-connect" ${busy ? "disabled" : ""}>Только подключиться</button>
+          </div>
           <div class="srv-note faint">
             Без домена сервер получит самоподписанный сертификат, а клиент будет
             проверять его по отпечатку — шифрование то же, маскировка слабее.
@@ -495,6 +499,12 @@
       const val = (id) => { const el = root.querySelector("#" + id); return el ? el.value.trim() : ""; };
       adapter.srvInstall({ host: val("srvHost"), port: val("srvPort") || "22", user: val("srvUser") || "root",
                            pass: val("srvPass"), keyfile: "", domain: val("srvDomain") });
+    }
+    else if (a === "srv-connect") {
+      const root = action.closest("section");
+      const val = (id) => { const el = root.querySelector("#" + id); return el ? el.value.trim() : ""; };
+      adapter.srvConnect({ host: val("srvHost"), port: val("srvPort") || "22", user: val("srvUser") || "root",
+                           pass: val("srvPass"), keyfile: "" });
     }
     else if (a === "srv-issue") {
       const root = action.closest("section");

@@ -854,6 +854,29 @@ namespace Veil
                 srvBusy = true; srvStatus = "Устанавливаю…"; srvKeys.Clear(); Push();
                 ThreadPool.QueueUserWorkItem(delegate { DoInstall(domain); });
             }
+            else if (cmd == "srv-connect")
+            {
+                srvTarget = new SshTarget {
+                    Host = Json(raw, "host").Trim(), Port = IntOr(Json(raw, "port"), 22),
+                    User = string.IsNullOrEmpty(Json(raw, "user")) ? "root" : Json(raw, "user").Trim(),
+                    Password = Json(raw, "pass"), KeyPath = Json(raw, "keyfile")
+                };
+                srvHost = srvTarget.Host; srvUser = srvTarget.User;
+                srvBusy = true; srvStatus = "Подключаюсь по SSH…"; Push();
+                ThreadPool.QueueUserWorkItem(delegate {
+                    try
+                    {
+                        using (SshClient sc = ServerSetup.Connect(srvTarget))
+                        {
+                            srvKeys = ServerSetup.Keys(sc);
+                            srvPin = ServerSetup.Pin(sc);
+                            srvStatus = "Подключено · ключей: " + srvKeys.Count;
+                        }
+                    }
+                    catch (Exception ex) { srvStatus = "Ошибка SSH: " + Short(ex); }
+                    srvBusy = false; Push();
+                });
+            }
             else if (cmd == "srv-keys")
             {
                 if (srvTarget == null) { srvStatus = "Сначала подключись к серверу"; Push(); return; }

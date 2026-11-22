@@ -89,6 +89,8 @@
     keyAdd: (key) => post({ cmd: "key-add", key }),
     srvInstall: (cfg) => post({ cmd: "srv-install", host: cfg.host, port: String(cfg.port), user: cfg.user,
                                pass: cfg.pass, keyfile: cfg.keyfile, domain: cfg.domain }),
+    srvConnect: (cfg) => post({ cmd: "srv-connect", host: cfg.host, port: String(cfg.port), user: cfg.user,
+                               pass: cfg.pass, keyfile: cfg.keyfile }),
     srvKeys: () => post({ cmd: "srv-keys" }),
     srvIssue: (name) => post({ cmd: "srv-issue", name }),
     srvRevoke: (name) => post({ cmd: "srv-revoke", name }),
