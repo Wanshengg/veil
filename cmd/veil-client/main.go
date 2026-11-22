@@ -1,6 +1,5 @@
-// veil-client exposes a local SOCKS5 proxy and drives every connection through
-// a real TLS session whose ClientHello is a byte-exact Chrome/Firefox/Safari
-// fingerprint (utls), then speaks the veil framing on top.
+// veil-client exposes local SOCKS5/SOCKS4/HTTP proxies and drives every
+// connection through a real TLS session with a browser-exact ClientHello.
 package main
 
 import (
@@ -29,8 +28,17 @@ type bufConn struct {
 
 func (b bufConn) Read(p []byte) (int, error) { return b.r.Read(p) }
 
+type cfg struct {
+	server, sni string
+	key         []byte
+	insecure    bool
+	fp          string
+	rules       *rules.Rules
+}
+
 func main() {
-	socksAddr := flag.String("socks", "127.0.0.1:1080", "local SOCKS5 listen address")
+	socksAddr := flag.String("socks", "127.0.0.1:1080", "local SOCKS5/SOCKS4 listen address")
+	httpAddr := flag.String("http", "127.0.0.1:8081", "local HTTP proxy listen address (empty to disable)")
 	server := flag.String("server", "127.0.0.1:443", "veil server host:port")
 	sni := flag.String("sni", "", "TLS SNI (default: host from -server)")
 	psk := flag.String("psk", "", "pre-shared key")
@@ -47,7 +55,6 @@ func main() {
 		log.Fatal("veil-client: -psk is required")
 	}
 	sum := sha256.Sum256([]byte(*psk))
-	key := sum[:]
 
 	sniName := *sni
 	if sniName == "" {
@@ -58,8 +65,11 @@ func main() {
 		sniName = h
 	}
 
+	c := &cfg{server: *server, sni: sniName, key: sum[:], insecure: *insecure, fp: *fp,
+		rules: rules.NewRules(*direct, *rulesFile)}
+
 	if *probe != "" {
-		uc, err := dialTunnel(*probe, sniName, true, *fp)
+		uc, err := dialTunnel(c, *probe)
 		if err == nil {
 			uc.Close()
 		}
@@ -68,21 +78,38 @@ func main() {
 		return
 	}
 
-	rl := rules.NewRules(*direct, *rulesFile)
-
 	ln, err := net.Listen("tcp", *socksAddr)
 	if err != nil {
-		log.Fatalf("veil-client: listen: %v", err)
+		log.Fatalf("veil-client: listen %s: %v", *socksAddr, err)
 	}
-	log.Printf("veil-client: SOCKS5 on %s -> %s (sni=%s fp=%s)", *socksAddr, *server, sniName, *fp)
+	log.Printf("veil-client: SOCKS5/4 on %s -> %s (sni=%s fp=%s direct=%v)", *socksAddr, *server, sniName, *fp, *direct)
+
+	if *httpAddr != "" {
+		hl, herr := net.Listen("tcp", *httpAddr)
+		if herr != nil {
+			log.Printf("veil-client: http %s: %v", *httpAddr, herr)
+		} else {
+			log.Printf("veil-client: HTTP proxy on %s", *httpAddr)
+			go func() {
+				for {
+					hc, err := hl.Accept()
+					if err != nil {
+						log.Printf("http accept: %v", err)
+						continue
+					}
+					go handleHTTP(hc, c)
+				}
+			}()
+		}
+	}
 
 	for {
-		c, err := ln.Accept()
+		conn, err := ln.Accept()
 		if err != nil {
 			log.Printf("accept: %v", err)
 			continue
 		}
-		go handleSocks(c, *server, sniName, key, *insecure, *fp, rl)
+		go handleAny(conn, c)
 	}
 }
 
@@ -116,32 +143,6 @@ func applyConfig(path string) {
 	}
 }
 
-// relayPlain splices two plain TCP connections (direct mode).
-func relayPlain(a, b net.Conn) {
-	done := make(chan struct{}, 2)
-	cp := func(dst, src net.Conn) {
-		buf := make([]byte, 32*1024)
-		for {
-			n, err := src.Read(buf)
-			if n > 0 {
-				if _, werr := dst.Write(buf[:n]); werr != nil {
-					break
-				}
-			}
-			if err != nil {
-				break
-			}
-		}
-		done <- struct{}{}
-	}
-	go cp(b, a)
-	go cp(a, b)
-	<-done
-	a.Close()
-	b.Close()
-	<-done
-}
-
 func helloID(name string) (utls.ClientHelloID, error) {
 	switch name {
 	case "chrome", "":
@@ -158,22 +159,22 @@ func helloID(name string) (utls.ClientHelloID, error) {
 	return utls.ClientHelloID{}, fmt.Errorf("unknown fingerprint %q", name)
 }
 
-func dialTunnel(server, sni string, insecure bool, fp string) (*utls.UConn, error) {
-	id, err := helloID(fp)
+func dialTunnel(c *cfg, addr string) (*utls.UConn, error) {
+	id, err := helloID(c.fp)
 	if err != nil {
 		return nil, err
 	}
-	raw, err := net.DialTimeout("tcp", server, 10*time.Second)
+	raw, err := net.DialTimeout("tcp", addr, 10*time.Second)
 	if err != nil {
 		return nil, err
 	}
 	raw.SetDeadline(time.Now().Add(15 * time.Second))
-	cfg := &utls.Config{
-		ServerName:         sni,
-		InsecureSkipVerify: insecure,
+	cfgTLS := &utls.Config{
+		ServerName:         c.sni,
+		InsecureSkipVerify: c.insecure,
 		NextProtos:         []string{"h2", "http/1.1"},
 	}
-	uc := utls.UClient(raw, cfg, id)
+	uc := utls.UClient(raw, cfgTLS, id)
 	if err := uc.Handshake(); err != nil {
 		raw.Close()
 		return nil, err
@@ -182,11 +183,53 @@ func dialTunnel(server, sni string, insecure bool, fp string) (*utls.UConn, erro
 	return uc, nil
 }
 
-func handleSocks(c net.Conn, server, sni string, key []byte, insecure bool, fp string, rl *rules.Rules) {
-	br := bufio.NewReader(c)
-	defer c.Close()
+// serve dials the destination (direct or through the tunnel) and splices bytes.
+func serve(client net.Conn, br *bufio.Reader, target string, c *cfg) {
+	if c.rules != nil && c.rules.Direct(target) {
+		up, err := net.DialTimeout("tcp", target, 10*time.Second)
+		if err != nil {
+			log.Printf("direct %s: %v", target, err)
+			return
+		}
+		defer up.Close()
+		log.Printf("direct -> %s", target)
+		relayPlain(bufConn{Conn: client, r: br}, up)
+		return
+	}
 
-	// greeting: ver, nmethods, methods
+	uc, err := dialTunnel(c, c.server)
+	if err != nil {
+		log.Printf("%s: tls: %v", target, err)
+		return
+	}
+	defer uc.Close()
+
+	outKey, inKey, err := proto.ClientHandshake(uc, c.key, target)
+	if err != nil {
+		log.Printf("%s: veil: %v", target, err)
+		return
+	}
+	log.Printf("tunnel -> %s", target)
+	proto.Relay(bufConn{Conn: client, r: br}, uc, uc, outKey, inKey)
+}
+
+// handleAny dispatches by the first byte: 5 = SOCKS5, 4 = SOCKS4/4a.
+func handleAny(conn net.Conn, c *cfg) {
+	br := bufio.NewReader(conn)
+	defer conn.Close()
+	ver, err := br.Peek(1)
+	if err != nil {
+		return
+	}
+	switch ver[0] {
+	case 5:
+		handleSocks5(conn, br, c)
+	case 4:
+		handleSocks4(conn, br, c)
+	}
+}
+
+func handleSocks5(conn net.Conn, br *bufio.Reader, c *cfg) {
 	var g [2]byte
 	if _, err := io.ReadFull(br, g[:]); err != nil || g[0] != 5 {
 		return
@@ -195,17 +238,16 @@ func handleSocks(c net.Conn, server, sni string, key []byte, insecure bool, fp s
 	if _, err := io.ReadFull(br, methods); err != nil {
 		return
 	}
-	if _, err := c.Write([]byte{5, 0}); err != nil { // no auth
+	if _, err := conn.Write([]byte{5, 0}); err != nil {
 		return
 	}
 
-	// request: ver, cmd, rsv, atyp, addr, port
 	var r [4]byte
 	if _, err := io.ReadFull(br, r[:]); err != nil {
 		return
 	}
-	if r[1] != 1 { // CONNECT only
-		c.Write([]byte{5, 7, 0, 1, 0, 0, 0, 0, 0, 0})
+	if r[1] != 1 {
+		conn.Write([]byte{5, 7, 0, 1, 0, 0, 0, 0, 0, 0})
 		return
 	}
 	var host string
@@ -233,7 +275,7 @@ func handleSocks(c net.Conn, server, sni string, key []byte, insecure bool, fp s
 		}
 		host = "[" + net.IP(ip[:]).String() + "]"
 	default:
-		c.Write([]byte{5, 8, 0, 1, 0, 0, 0, 0, 0, 0})
+		conn.Write([]byte{5, 8, 0, 1, 0, 0, 0, 0, 0, 0})
 		return
 	}
 	var pb [2]byte
@@ -241,40 +283,226 @@ func handleSocks(c net.Conn, server, sni string, key []byte, insecure bool, fp s
 		return
 	}
 	target := net.JoinHostPort(host, strconv.Itoa(int(binary.BigEndian.Uint16(pb[:]))))
+	if _, err := conn.Write([]byte{5, 0, 0, 1, 0, 0, 0, 0, 0, 0}); err != nil {
+		return
+	}
+	serve(conn, br, target, c)
+}
 
-	if rl != nil && rl.Direct(target) {
+// handleSocks4 supports SOCKS4 and SOCKS4a (Chrome maps system "socks=" to v4).
+func handleSocks4(conn net.Conn, br *bufio.Reader, c *cfg) {
+	var h [8]byte
+	if _, err := io.ReadFull(br, h[:]); err != nil {
+		return
+	}
+	if h[0] != 4 || h[1] != 1 {
+		conn.Write([]byte{0, 0x5B, 0, 0, 0, 0, 0, 0})
+		return
+	}
+	port := int(binary.BigEndian.Uint16(h[2:4]))
+	ip := net.IP(h[4:8])
+	for {
+		b, err := br.ReadByte()
+		if err != nil || b == 0 {
+			break
+		}
+	}
+	host := ip.String()
+	if ip[0] == 0 && ip[1] == 0 && ip[2] == 0 && ip[3] != 0 {
+		var sb []byte
+		for {
+			b, err := br.ReadByte()
+			if err != nil || b == 0 {
+				break
+			}
+			sb = append(sb, b)
+		}
+		if len(sb) == 0 {
+			conn.Write([]byte{0, 0x5B, 0, 0, 0, 0, 0, 0})
+			return
+		}
+		host = string(sb)
+	}
+	target := net.JoinHostPort(host, strconv.Itoa(port))
+	if _, err := conn.Write([]byte{0, 0x5A, 0, 0, 0, 0, 0, 0}); err != nil {
+		return
+	}
+	serve(conn, br, target, c)
+}
+
+// handleHTTP is a minimal forward proxy: CONNECT for TLS, absolute-URI for plain HTTP.
+func handleHTTP(conn net.Conn, c *cfg) {
+	br := bufio.NewReader(conn)
+	defer conn.Close()
+	conn.SetReadDeadline(time.Now().Add(30 * time.Second))
+	req, err := readRequest(br)
+	if err != nil {
+		return
+	}
+	conn.SetReadDeadline(time.Time{})
+	log.Printf("http %s %s", req.method, req.url)
+	client := bufConn{Conn: conn, r: br}
+
+	if strings.EqualFold(req.method, "CONNECT") {
+		if c.rules != nil && c.rules.Direct(req.target) {
+			up, derr := net.DialTimeout("tcp", req.target, 10*time.Second)
+			if derr != nil {
+				log.Printf("http connect %s: %v", req.target, derr)
+				conn.Write([]byte("HTTP/1.1 502 Bad Gateway\r\n\r\n"))
+				return
+			}
+			defer up.Close()
+			log.Printf("direct -> %s", req.target)
+			if _, werr := conn.Write([]byte("HTTP/1.1 200 Connection established\r\n\r\n")); werr != nil {
+				return
+			}
+			relayPlain(client, up)
+			return
+		}
+		uc, derr := dialTunnel(c, c.server)
+		if derr != nil {
+			log.Printf("http connect %s: tls %v", req.target, derr)
+			conn.Write([]byte("HTTP/1.1 502 Bad Gateway\r\n\r\n"))
+			return
+		}
+		defer uc.Close()
+		outKey, inKey, herr := proto.ClientHandshake(uc, c.key, req.target)
+		if herr != nil {
+			log.Printf("http connect %s: veil %v", req.target, herr)
+			conn.Write([]byte("HTTP/1.1 502 Bad Gateway\r\n\r\n"))
+			return
+		}
+		log.Printf("tunnel -> %s", req.target)
+		if _, werr := conn.Write([]byte("HTTP/1.1 200 Connection established\r\n\r\n")); werr != nil {
+			return
+		}
+		proto.Relay(client, uc, uc, outKey, inKey)
+		return
+	}
+
+	u := req.url
+	i := strings.Index(u, "://")
+	if i < 0 {
+		conn.Write([]byte("HTTP/1.1 400 Bad Request\r\n\r\n"))
+		return
+	}
+	rest := u[i+3:]
+	hostpart, path := rest, "/"
+	if j := strings.IndexByte(rest, '/'); j >= 0 {
+		hostpart, path = rest[:j], rest[j:]
+	}
+	if !strings.Contains(hostpart, ":") {
+		hostpart += ":80"
+	}
+	target := hostpart
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s %s HTTP/1.1\r\n", req.method, path)
+	for _, h := range req.headers {
+		if strings.EqualFold(h.name, "Proxy-Connection") {
+			continue
+		}
+		fmt.Fprintf(&b, "%s: %s\r\n", h.name, h.value)
+	}
+	b.WriteString("Connection: close\r\n\r\n")
+	raw := []byte(b.String())
+
+	if c.rules != nil && c.rules.Direct(target) {
 		up, derr := net.DialTimeout("tcp", target, 10*time.Second)
 		if derr != nil {
-			log.Printf("direct %s: %v", target, derr)
-			c.Write([]byte{5, 5, 0, 1, 0, 0, 0, 0, 0, 0})
+			conn.Write([]byte("HTTP/1.1 502 Bad Gateway\r\n\r\n"))
 			return
 		}
 		defer up.Close()
-		if _, err := c.Write([]byte{5, 0, 0, 1, 0, 0, 0, 0, 0, 0}); err != nil {
+		log.Printf("direct -> %s", target)
+		if _, werr := up.Write(raw); werr != nil {
 			return
 		}
-		log.Printf("direct -> %s", target)
-		relayPlain(bufConn{Conn: c, r: br}, up)
+		relayPlain(client, up)
 		return
 	}
 
-	uc, err := dialTunnel(server, sni, insecure, fp)
-	if err != nil {
-		log.Printf("%s: tls: %v", target, err)
-		c.Write([]byte{5, 1, 0, 1, 0, 0, 0, 0, 0, 0})
+	uc, derr := dialTunnel(c, c.server)
+	if derr != nil {
+		log.Printf("http %s: tls %v", target, derr)
+		conn.Write([]byte("HTTP/1.1 502 Bad Gateway\r\n\r\n"))
 		return
 	}
 	defer uc.Close()
-
-	outKey, inKey, err := proto.ClientHandshake(uc, key, target)
-	if err != nil {
-		log.Printf("%s: veil: %v", target, err)
-		c.Write([]byte{5, 4, 0, 1, 0, 0, 0, 0, 0, 0})
-		return
-	}
-	if _, err := c.Write([]byte{5, 0, 0, 1, 0, 0, 0, 0, 0, 0}); err != nil {
+	outKey, inKey, herr := proto.ClientHandshake(uc, c.key, target)
+	if herr != nil {
+		log.Printf("http %s: veil %v", target, herr)
+		conn.Write([]byte("HTTP/1.1 502 Bad Gateway\r\n\r\n"))
 		return
 	}
 	log.Printf("tunnel -> %s", target)
-	proto.Relay(bufConn{Conn: c, r: br}, uc, uc, outKey, inKey)
+	if werr := proto.WriteFrame(uc, outKey, raw); werr != nil {
+		return
+	}
+	proto.Relay(client, uc, uc, outKey, inKey)
+}
+
+type header struct{ name, value string }
+
+type request struct {
+	method, url, target string
+	headers             []header
+}
+
+func readRequest(br *bufio.Reader) (*request, error) {
+	line, err := br.ReadString('\n')
+	if err != nil {
+		return nil, err
+	}
+	f := strings.Fields(strings.TrimSpace(line))
+	if len(f) < 2 {
+		return nil, fmt.Errorf("bad request line")
+	}
+	r := &request{method: f[0], url: f[1]}
+	if strings.EqualFold(r.method, "CONNECT") {
+		r.target = r.url
+		if !strings.Contains(r.target, ":") {
+			r.target += ":443"
+		}
+	}
+	for {
+		h, err := br.ReadString('\n')
+		if err != nil {
+			return nil, err
+		}
+		h = strings.TrimRight(h, "\r\n")
+		if h == "" {
+			break
+		}
+		if k, v, ok := strings.Cut(h, ":"); ok {
+			r.headers = append(r.headers, header{strings.TrimSpace(k), strings.TrimSpace(v)})
+		}
+	}
+	return r, nil
+}
+
+// relayPlain splices two plain TCP connections (direct mode).
+func relayPlain(a, b net.Conn) {
+	done := make(chan struct{}, 2)
+	cp := func(dst, src net.Conn) {
+		buf := make([]byte, 32*1024)
+		for {
+			n, err := src.Read(buf)
+			if n > 0 {
+				if _, werr := dst.Write(buf[:n]); werr != nil {
+					break
+				}
+			}
+			if err != nil {
+				break
+			}
+		}
+		done <- struct{}{}
+	}
+	go cp(b, a)
+	go cp(a, b)
+	<-done
+	a.Close()
+	b.Close()
+	<-done
 }

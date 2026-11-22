@@ -40,6 +40,7 @@ namespace Veil
         public static readonly Color Accent2 = Color.FromArgb(124, 96, 255);
         public static readonly Color Ok = Color.FromArgb(63, 185, 128);
         public static readonly Color Warn = Color.FromArgb(240, 178, 85);
+        public static readonly Color Bad = Color.FromArgb(244, 112, 112);
         public static readonly Font UI = new Font("Segoe UI", 9.5f);
         public static readonly Font UIBold = new Font("Segoe UI Semibold", 10.5f);
         public static readonly Font Title = new Font("Segoe UI Semibold", 11f);
@@ -326,7 +327,7 @@ namespace Veil
                         File.WriteAllText(BackupPath, en + "\n" + srv);
                     }
                     k.SetValue("ProxyEnable", 1, RegistryValueKind.DWord);
-                    k.SetValue("ProxyServer", "socks=" + socks, RegistryValueKind.String);
+                    k.SetValue("ProxyServer", "http=127.0.0.1:8081;https=127.0.0.1:8081;socks=" + socks, RegistryValueKind.String);
                     k.SetValue("ProxyOverride", "<local>", RegistryValueKind.String);
                 }
             }
@@ -560,6 +561,8 @@ namespace Veil
         public bool Connected, Connecting;
         public string Server = "не подключено";
         public string Cc = "", Country = "", ExitIp = "";
+        public string Check = "";
+        public bool CheckOk;
         public double Pulse;
         public DateTime Start = DateTime.Now;
 
@@ -596,6 +599,12 @@ namespace Veil
                 if (ExitIp.Length > 0)
                     TextRenderer.DrawText(g, ExitIp, Theme.Mono, new Rectangle(Width - 190, 48, 120, 18),
                         Color.FromArgb(110, 122, 138), TextFormatFlags.Right | TextFormatFlags.VerticalCenter);
+            }
+            if (Check.Length > 0)
+            {
+                TextRenderer.DrawText(g, (CheckOk ? "● " : "× ") + Check, Theme.Small,
+                    new Rectangle(56, 68, Width - 90, 16), CheckOk ? Theme.Ok : Theme.Bad,
+                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
             }
             if (Connected)
             {
@@ -1055,6 +1064,7 @@ namespace Veil
                 tray.ShowBalloonTip(1500, "veil", "Туннель поднят, прокси включён", ToolTipIcon.Info);
                 card.Invalidate();
 
+                CheckTunnel();
                 Socks.LookupCountry(p, delegate(Profile done)
                 {
                     BeginInvoke(new MethodInvoker(delegate
@@ -1082,6 +1092,26 @@ namespace Veil
             }
         }
 
+        void CheckTunnel()
+        {
+            card.Check = "проверяю…";
+            card.CheckOk = false;
+            card.Invalidate();
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                DateTime t0 = DateTime.Now;
+                string body = Socks.Get("example.com", "/", 12000);
+                int ms = (int)(DateTime.Now - t0).TotalMilliseconds;
+                bool ok = body != null && body.IndexOf("Example Domain", StringComparison.Ordinal) >= 0;
+                BeginInvoke(new MethodInvoker(delegate
+                {
+                    card.CheckOk = ok;
+                    card.Check = ok ? "проверка ok · " + ms + " мс" : "нет ответа через туннель";
+                    card.Invalidate();
+                }));
+            });
+        }
+
         void Stop(bool user)
         {
             try { if (proc != null && !proc.HasExited) { proc.Kill(); proc.WaitForExit(3000); } } catch { }
@@ -1090,6 +1120,7 @@ namespace Veil
             btnGo.Text = "Подключиться";
             card.Connected = false;
             card.Connecting = false;
+            card.Check = "";
             card.Invalidate();
             btnGo.Invalidate();
             tray.Text = "veil: отключено";
