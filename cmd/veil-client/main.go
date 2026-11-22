@@ -71,6 +71,13 @@ func (c *cfg) order() []string {
 	return out
 }
 
+func verTag(v uint16) string {
+	if v == 0 {
+		return "1.3"
+	}
+	return "1.2"
+}
+
 func (c *cfg) promote(fp string) {
 	c.mu.Lock()
 	c.good = fp
@@ -123,7 +130,7 @@ func main() {
 		rules: rules.NewRules(*direct, *rulesFile)}
 
 	if *probe != "" {
-		uc, err := dialTunnel(c, *probe, c.fp)
+		uc, err := dialTunnel(c, *probe, c.fp, 0)
 		if err == nil {
 			uc.Close()
 		}
@@ -156,6 +163,17 @@ func main() {
 			}()
 		}
 	}
+
+	// Warm-up: find a working fingerprint before the first user request.
+	go func() {
+		uc, _, _, fp, err := openTunnel(c, "example.com:443")
+		if err != nil {
+			log.Printf("warm-up: %v", err)
+			return
+		}
+		uc.Close()
+		log.Printf("warm-up ok (fp=%s)", fp)
+	}()
 
 	for {
 		conn, err := ln.Accept()
@@ -213,7 +231,7 @@ func helloID(name string) (utls.ClientHelloID, error) {
 	return utls.ClientHelloID{}, fmt.Errorf("unknown fingerprint %q", name)
 }
 
-func dialTunnel(c *cfg, addr, fp string) (*utls.UConn, error) {
+func dialTunnel(c *cfg, addr, fp string, maxVer uint16) (*utls.UConn, error) {
 	id, err := helloID(fp)
 	if err != nil {
 		return nil, err
@@ -222,11 +240,14 @@ func dialTunnel(c *cfg, addr, fp string) (*utls.UConn, error) {
 	if err != nil {
 		return nil, err
 	}
-	raw.SetDeadline(time.Now().Add(15 * time.Second))
+	raw.SetDeadline(time.Now().Add(5 * time.Second))
 	cfgTLS := &utls.Config{
 		ServerName:         c.sni,
 		InsecureSkipVerify: c.insecure,
 		NextProtos:         []string{"h2", "http/1.1"},
+	}
+	if maxVer != 0 {
+		cfgTLS.MaxVersion = maxVer
 	}
 	uc := utls.UClient(raw, cfgTLS, id)
 	if err := uc.Handshake(); err != nil {
@@ -241,24 +262,29 @@ func dialTunnel(c *cfg, addr, fp string) (*utls.UConn, error) {
 // one that survives both the TLS handshake and the veil handshake.
 func openTunnel(c *cfg, target string) (*utls.UConn, []byte, []byte, string, error) {
 	var last error = fmt.Errorf("no fingerprints available")
-	for _, fp := range c.order() {
-		uc, err := dialTunnel(c, c.server, fp)
-		if err != nil {
-			c.penalize(fp)
-			last = err
-			log.Printf("fp %s: tls %v", fp, err)
-			continue
+	// Some ISPs stall TLS 1.3 to a flagged IP while TLS 1.2 passes, so the
+	// second pass forces 1.2 for every fingerprint.
+	for _, maxVer := range []uint16{0, utls.VersionTLS12} {
+		for _, fp := range c.order() {
+			uc, err := dialTunnel(c, c.server, fp, maxVer)
+			if err != nil {
+				c.penalize(fp)
+				last = err
+				log.Printf("fp %s tls%s: %v", fp, verTag(maxVer), err)
+				continue
+			}
+			out, in, err := proto.ClientHandshake(uc, c.key, target)
+			if err != nil {
+				uc.Close()
+				c.penalize(fp)
+				last = err
+				log.Printf("fp %s tls%s: veil %v", fp, verTag(maxVer), err)
+				continue
+			}
+			c.promote(fp)
+			log.Printf("fp %s tls%s ok", fp, verTag(maxVer))
+			return uc, out, in, fp, nil
 		}
-		out, in, err := proto.ClientHandshake(uc, c.key, target)
-		if err != nil {
-			uc.Close()
-			c.penalize(fp)
-			last = err
-			log.Printf("fp %s: veil %v", fp, err)
-			continue
-		}
-		c.promote(fp)
-		return uc, out, in, fp, nil
 	}
 	return nil, nil, nil, "", last
 }
