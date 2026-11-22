@@ -1361,6 +1361,8 @@ body[data-overlay] .sheet { transform: translate(-50%, 0); }
   };
 
   /* ── рендер ──────────────────────────────────────────────────────────── */
+  let lastHtml = "";
+
   function render() {
     const snap = state.snapshot;
     if (!snap) return;
@@ -1371,13 +1373,41 @@ body[data-overlay] .sheet { transform: translate(-50%, 0); }
     if (badgeHost) badgeHost.innerHTML = comp.badge(snap.state);
 
     const view = $("#view");
-    view.innerHTML = state.tab === "settings" ? views.settings(snap)
+    const html = state.tab === "settings" ? views.settings(snap)
       : state.tab === "add" ? views.add(snap)
       : state.tab === "server" ? views.server(snap)
       : views.home(snap, servers);
 
-    document.querySelectorAll(".tab").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.tab === state.tab)));
-    if (state.tab === "home") decorateHero();
+    const tabKey = state.tab;
+    document.querySelectorAll(".tab").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.tab === tabKey)));
+
+    // Снапшот приходит раз в секунду: перерисовываем DOM только при реальном
+    // изменении вида и переносим введённый текст с фокусом, иначе поля стираются.
+    if (html === lastHtml) return;
+
+    const active = document.activeElement;
+    const keepFocused = active && active.id ? active.id : "";
+    const keep = {};
+    view.querySelectorAll("input, select").forEach((el) => {
+      if (!el.id) return;
+      keep[el.id] = { value: el.value, start: el.selectionStart, end: el.selectionEnd };
+    });
+
+    view.innerHTML = html;
+    lastHtml = html;
+
+    Object.keys(keep).forEach((id) => {
+      const el = view.querySelector("#" + id);
+      if (el) el.value = keep[id].value;
+    });
+    if (keepFocused) {
+      const el = view.querySelector("#" + keepFocused);
+      if (el) {
+        el.focus();
+        const k = keep[keepFocused];
+        try { if (k && k.start !== null) el.setSelectionRange(k.start, k.end); } catch (e) {}
+      }
+    }
   }
 
   function decorateHero() {
@@ -1388,7 +1418,7 @@ body[data-overlay] .sheet { transform: translate(-50%, 0); }
   /* ── действия ────────────────────────────────────────────────────────── */
   document.addEventListener("click", async (e) => {
     const tab = e.target.closest(".tab");
-    if (tab) { state.tab = tab.dataset.tab; render(); return; }
+    if (tab) { state.tab = tab.dataset.tab; lastHtml = ""; render(); return; }
 
     const appDel = e.target.closest("[data-app-del]");
     if (appDel) { e.stopPropagation(); adapter.appDel(appDel.dataset.appDel); return; }
