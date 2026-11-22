@@ -14,6 +14,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	utls "github.com/refraction-networking/utls"
@@ -34,6 +35,59 @@ type cfg struct {
 	insecure    bool
 	fp          string
 	rules       *rules.Rules
+
+	mu   sync.Mutex
+	good string
+	bad  map[string]time.Time
+}
+
+// order returns the fingerprints to try: the requested one first, then fallbacks.
+func (c *cfg) order() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.bad == nil {
+		c.bad = map[string]time.Time{}
+	}
+	seen := map[string]bool{}
+	var out []string
+	add := func(f string) {
+		f = strings.TrimSpace(f)
+		if f == "" || seen[f] || f == "random" {
+			return
+		}
+		if t, ok := c.bad[f]; ok && time.Since(t) < 5*time.Minute {
+			return
+		}
+		seen[f] = true
+		out = append(out, f)
+	}
+	add(c.good)
+	for _, f := range strings.Split(c.fp, ",") {
+		add(f)
+	}
+	for _, f := range []string{"firefox", "safari", "edge", "chrome"} {
+		add(f)
+	}
+	return out
+}
+
+func (c *cfg) promote(fp string) {
+	c.mu.Lock()
+	c.good = fp
+	delete(c.bad, fp)
+	c.mu.Unlock()
+}
+
+func (c *cfg) penalize(fp string) {
+	c.mu.Lock()
+	if c.bad == nil {
+		c.bad = map[string]time.Time{}
+	}
+	c.bad[fp] = time.Now()
+	if c.good == fp {
+		c.good = ""
+	}
+	c.mu.Unlock()
 }
 
 func main() {
@@ -69,7 +123,7 @@ func main() {
 		rules: rules.NewRules(*direct, *rulesFile)}
 
 	if *probe != "" {
-		uc, err := dialTunnel(c, *probe)
+		uc, err := dialTunnel(c, *probe, c.fp)
 		if err == nil {
 			uc.Close()
 		}
@@ -159,8 +213,8 @@ func helloID(name string) (utls.ClientHelloID, error) {
 	return utls.ClientHelloID{}, fmt.Errorf("unknown fingerprint %q", name)
 }
 
-func dialTunnel(c *cfg, addr string) (*utls.UConn, error) {
-	id, err := helloID(c.fp)
+func dialTunnel(c *cfg, addr, fp string) (*utls.UConn, error) {
+	id, err := helloID(fp)
 	if err != nil {
 		return nil, err
 	}
@@ -183,6 +237,32 @@ func dialTunnel(c *cfg, addr string) (*utls.UConn, error) {
 	return uc, nil
 }
 
+// openTunnel tries the configured fingerprints in order and returns the first
+// one that survives both the TLS handshake and the veil handshake.
+func openTunnel(c *cfg, target string) (*utls.UConn, []byte, []byte, string, error) {
+	var last error = fmt.Errorf("no fingerprints available")
+	for _, fp := range c.order() {
+		uc, err := dialTunnel(c, c.server, fp)
+		if err != nil {
+			c.penalize(fp)
+			last = err
+			log.Printf("fp %s: tls %v", fp, err)
+			continue
+		}
+		out, in, err := proto.ClientHandshake(uc, c.key, target)
+		if err != nil {
+			uc.Close()
+			c.penalize(fp)
+			last = err
+			log.Printf("fp %s: veil %v", fp, err)
+			continue
+		}
+		c.promote(fp)
+		return uc, out, in, fp, nil
+	}
+	return nil, nil, nil, "", last
+}
+
 // serve dials the destination (direct or through the tunnel) and splices bytes.
 func serve(client net.Conn, br *bufio.Reader, target string, c *cfg) {
 	if c.rules != nil && c.rules.Direct(target) {
@@ -197,19 +277,13 @@ func serve(client net.Conn, br *bufio.Reader, target string, c *cfg) {
 		return
 	}
 
-	uc, err := dialTunnel(c, c.server)
+	uc, outKey, inKey, fp, err := openTunnel(c, target)
 	if err != nil {
-		log.Printf("%s: tls: %v", target, err)
+		log.Printf("%s: %v", target, err)
 		return
 	}
 	defer uc.Close()
-
-	outKey, inKey, err := proto.ClientHandshake(uc, c.key, target)
-	if err != nil {
-		log.Printf("%s: veil: %v", target, err)
-		return
-	}
-	log.Printf("tunnel -> %s", target)
+	log.Printf("tunnel -> %s (fp=%s)", target, fp)
 	proto.Relay(bufConn{Conn: client, r: br}, uc, uc, outKey, inKey)
 }
 
@@ -359,20 +433,14 @@ func handleHTTP(conn net.Conn, c *cfg) {
 			relayPlain(client, up)
 			return
 		}
-		uc, derr := dialTunnel(c, c.server)
+		uc, outKey, inKey, fp, derr := openTunnel(c, req.target)
 		if derr != nil {
-			log.Printf("http connect %s: tls %v", req.target, derr)
+			log.Printf("http connect %s: %v", req.target, derr)
 			conn.Write([]byte("HTTP/1.1 502 Bad Gateway\r\n\r\n"))
 			return
 		}
 		defer uc.Close()
-		outKey, inKey, herr := proto.ClientHandshake(uc, c.key, req.target)
-		if herr != nil {
-			log.Printf("http connect %s: veil %v", req.target, herr)
-			conn.Write([]byte("HTTP/1.1 502 Bad Gateway\r\n\r\n"))
-			return
-		}
-		log.Printf("tunnel -> %s", req.target)
+		log.Printf("tunnel -> %s (fp=%s)", req.target, fp)
 		if _, werr := conn.Write([]byte("HTTP/1.1 200 Connection established\r\n\r\n")); werr != nil {
 			return
 		}
@@ -422,20 +490,14 @@ func handleHTTP(conn net.Conn, c *cfg) {
 		return
 	}
 
-	uc, derr := dialTunnel(c, c.server)
+	uc, outKey, inKey, fp, derr := openTunnel(c, target)
 	if derr != nil {
-		log.Printf("http %s: tls %v", target, derr)
+		log.Printf("http %s: %v", target, derr)
 		conn.Write([]byte("HTTP/1.1 502 Bad Gateway\r\n\r\n"))
 		return
 	}
 	defer uc.Close()
-	outKey, inKey, herr := proto.ClientHandshake(uc, c.key, target)
-	if herr != nil {
-		log.Printf("http %s: veil %v", target, herr)
-		conn.Write([]byte("HTTP/1.1 502 Bad Gateway\r\n\r\n"))
-		return
-	}
-	log.Printf("tunnel -> %s", target)
+	log.Printf("tunnel -> %s (fp=%s)", target, fp)
 	if werr := proto.WriteFrame(uc, outKey, raw); werr != nil {
 		return
 	}

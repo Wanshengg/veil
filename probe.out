@@ -147,3 +147,5 @@
 [2026-11-22T17:35:07+0300] OK  tls=603ms tunnel=393ms 931B 
 [2026-11-22T17:40:12+0300] FAIL tls=454ms tunnel=3226ms 0B ConnectionResetError(10054, 'Удаленный хост принудительно разорвал существующее подключение', None, 10054, None)
 *** first failure after 44454s (12.35h) ***
+[2026-11-22T17:45:15+0300] OK  tls=399ms tunnel=376ms 931B 
+[2026-11-22T17:50:32+0300] FAIL tls=397ms tunnel=15028ms 0B TimeoutError('timed out')
