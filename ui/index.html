@@ -8,13 +8,27 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="tokens.css?v=5">
-<link rel="stylesheet" href="app.css?v=5">
+<script>
+/* тема применяется до первой отрисовки — вспышки светлого фона нет */
+(() => {
+  try {
+    const saved = localStorage.getItem("veil.theme") || "system";
+    const dark = saved === "dark" || (saved === "system" &&
+      window.matchMedia("(prefers-color-scheme: dark)").matches);
+    document.documentElement.dataset.theme = dark ? "dark" : "light";
+  } catch (e) {}
+  const ready = () => document.documentElement.classList.add("ready");
+  requestAnimationFrame(() => requestAnimationFrame(ready));
+  setTimeout(ready, 100);          // запас, если кадры не успевают
+})();
+</script>
+<link rel="stylesheet" href="tokens.css?v=6">
+<link rel="stylesheet" href="app.css?v=6">
 </head>
 <body>
 <main id="view" tabindex="-1"></main>
 <div id="overlay"></div>
-<script src="app.js?v=5"></script>
+<script src="app.js?v=6"></script>
 <script>
 /* мост к ядру: без него интерфейс остаётся на макете */
 (() => {

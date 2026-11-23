@@ -76,6 +76,26 @@
     return { name: row[0], in: row[1], to: row[2] };
   };
 
+  /* ── тема: светлая / тёмная / системная ───────────────────────────────── */
+
+  const THEME_KEY = "veil.theme";
+
+  const resolveTheme = (mode) =>
+    mode === "dark" ? "dark"
+    : mode === "light" ? "light"
+    : (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+
+  const applyTheme = (snap) => {
+    let mode = snap && snap.settings && snap.settings.theme;
+    if (!mode) { try { mode = localStorage.getItem(THEME_KEY); } catch (e) {} }
+    if (!mode) mode = "system";
+    const resolved = resolveTheme(mode);
+    if (document.documentElement.dataset.theme !== resolved) {
+      document.documentElement.dataset.theme = resolved;
+    }
+    return mode;
+  };
+
   /* ── состояние экранов ────────────────────────────────────────────────── */
 
   const S = {
@@ -301,8 +321,9 @@
         <div class="row">
           <span class="t">Тема</span>
           <span class="choice" role="group" aria-label="Тема">
-            <button type="button" data-action="set-theme" data-value="light" aria-pressed="${s.theme !== "dark"}">Светлая</button>
-            <button type="button" data-action="set-theme" data-value="dark" aria-pressed="${s.theme === "dark"}">Тёмная</button>
+            ${[["light", "Светлая"], ["dark", "Тёмная"], ["system", "Системная"]].map(([v, label]) =>
+              `<button type="button" data-action="set-theme" data-value="${v}" aria-pressed="${(s.theme || "system") === v}">${label}</button>`
+            ).join("")}
           </span>
         </div>
         ${row("Язык", "Русский")}
@@ -421,8 +442,7 @@
     if (!snap) return;
     const servers = adapter.serverList() || [];
     const view = $("#view");
-    const theme = S.snap && S.snap.settings && S.snap.settings.theme === "dark" ? "dark" : "light";
-    if (document.documentElement.dataset.theme !== theme) document.documentElement.dataset.theme = theme;
+    applyTheme(snap);
 
     let html;
     if (!snap.onboarded) html = viewOnboarding();
@@ -516,7 +536,15 @@
     if (a === "server") return go("server");
     if (a === "logs") return openSheet("logs");
     if (a === "dns") return openSheet("dns");
-    if (a === "set-theme") return adapter.setSetting("theme", el.dataset.value);
+    if (a === "set-theme") {
+      const value = el.dataset.value;
+      try { localStorage.setItem(THEME_KEY, value); } catch (e) {}
+      adapter.setSetting("theme", value);
+      S.lastKey = "";                 // перерисовать строку настроек
+      applyTheme({ settings: { theme: value } });
+      render();
+      return;
+    }
 
     if (a === "set-kill") return adapter.setSetting("killSwitch", !snap.settings.killSwitch);
     if (a === "set-split") return adapter.setSetting("split", !snap.settings.split);
@@ -588,6 +616,15 @@
       if (snap.onboarded && wasOnboarded === false) S.last = "";
       render();
     });
+  }
+
+  if (window.matchMedia) {
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const onScheme = () => {
+      const mode = (S.snap && S.snap.settings && S.snap.settings.theme) || "system";
+      if (mode === "system") { applyTheme(S.snap); }
+    };
+    mq.addEventListener ? mq.addEventListener("change", onScheme) : mq.addListener(onScheme);
   }
 
   window.VEIL_UI = { setAdapter, state: S, mock };

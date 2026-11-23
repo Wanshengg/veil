@@ -8,26 +8,46 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script>
+/* тема применяется до первой отрисовки — вспышки светлого фона нет */
+(() => {
+  try {
+    const saved = localStorage.getItem("veil.theme") || "system";
+    const dark = saved === "dark" || (saved === "system" &&
+      window.matchMedia("(prefers-color-scheme: dark)").matches);
+    document.documentElement.dataset.theme = dark ? "dark" : "light";
+  } catch (e) {}
+  const ready = () => document.documentElement.classList.add("ready");
+  requestAnimationFrame(() => requestAnimationFrame(ready));
+  setTimeout(ready, 100);          // запас, если кадры не успевают
+})();
+</script>
 <style>
-/* veil — токены концепта «Фраза».
-   Бумага и тушь. Две темы — светлая и тёмная, обе без градиентов и теней. */
+/* veil — токены концепта «Фраза». Один источник правды для обеих тем.
+   Светлая — бумага и тушь. Тёмная — тёплый уголь, без синевы и без чистого чёрного. */
 
 :root {
-  /* светлая (по умолчанию) */
   color-scheme: light;
-  --bg:     #F6F4EF;
-  --ink:    #16181D;
-  --sec:    #6E7076;
-  --rule:   #E4E1D9;
-  --accent: #1E6B4F;
-  --danger: #B3261E;
-  --mute:   #B9B6AE;
 
-  --on-ink:    #FFFFFF;
-  --on-danger: #FFFFFF;
-  --word-line: rgba(22, 24, 29, 0.30);
+  --bg:        #F6F4EF;
+  --surface:   #F6F4EF;   /* шторка: в светлой совпадает с фоном, различима по волосятику */
+  --ink:       #16181D;
+  --sec:       #6E7076;
+  --rule:      #E4E1D9;
+  --accent:    #1E6B4F;
+  --danger:    #B3261E;
+  --disabled:  #B9B6AE;
   --scrim:     rgba(22, 24, 29, 0.18);
-  --knob-off:  #6E7076;
+
+  --btn-fill-bg:     var(--ink);
+  --btn-fill-text:   #FFFFFF;
+  --btn-line:        var(--ink);
+  --btn-line-text:   var(--ink);
+  --btn-danger-bg:   #B3261E;
+  --btn-danger-text: #FFFFFF;
+
+  --word-underline: rgba(22, 24, 29, 0.30);
+  --knob-off:       #6E7076;
 
   --sans: 'Golos Text', 'Segoe UI', system-ui, -apple-system, sans-serif;
   --mono: 'IBM Plex Mono', Consolas, ui-monospace, monospace;
@@ -44,25 +64,32 @@
   --r-btn: 12px;
 
   --t-fast: 120ms;
-  --t-base: 180ms;
+  --t-base: 150ms;
   --ease: cubic-bezier(0.2, 0.7, 0.3, 1);
 }
 
 [data-theme="dark"] {
   color-scheme: dark;
-  --bg:     #101216;
-  --ink:    #E9EBEF;
-  --sec:    #9AA1AC;
-  --rule:   #262A32;
-  --accent: #43C08F;
-  --danger: #E4695F;
-  --mute:   #50565F;
 
-  --on-ink:    #101216;
-  --on-danger: #1A0B0A;
-  --word-line: rgba(233, 235, 239, 0.34);
-  --scrim:     rgba(0, 0, 0, 0.58);
-  --knob-off:  #9AA1AC;
+  --bg:        #141311;
+  --surface:   #1C1A17;
+  --ink:       #F0EDE6;
+  --sec:       #9A968C;
+  --rule:      #2A2823;
+  --accent:    #3E9E71;
+  --danger:    #DE6A5F;
+  --disabled:  #5A574F;
+  --scrim:     rgba(0, 0, 0, 0.55);
+
+  --btn-fill-bg:     #F0EDE6;
+  --btn-fill-text:   #141311;
+  --btn-line:        #6A655A;   /* 3.2:1 на фоне; #4A4740 давал 2.0:1 */
+  --btn-line-text:   #F0EDE6;
+  --btn-danger-bg:   #DE6A5F;
+  --btn-danger-text: #141311;
+
+  --word-underline: rgba(240, 237, 230, 0.40);
+  --knob-off:       #9A968C;
 }
 
 </style>
@@ -118,7 +145,7 @@ body {
   cursor: pointer;
   text-decoration: underline;
   text-decoration-thickness: 1px;
-  text-decoration-color: var(--word-line);
+  text-decoration-color: var(--word-underline);
   text-underline-offset: 4px;
 }
 .chev { font-size: 0.62em; color: var(--sec); margin-left: 2px; }
@@ -173,9 +200,9 @@ body {
   transition: background var(--t-base) var(--ease), color var(--t-base) var(--ease),
               border-color var(--t-base) var(--ease);
 }
-.btn.filled  { background: var(--ink); color: var(--on-ink); }
-.btn.outline { background: transparent; border-color: var(--ink); color: var(--ink); }
-.btn.danger  { background: var(--danger); color: var(--on-danger); }
+.btn.filled  { background: var(--btn-fill-bg); color: var(--btn-fill-text); }
+.btn.outline { background: transparent; border-color: var(--btn-line); color: var(--btn-line-text); }
+.btn.danger  { background: var(--btn-danger-bg); color: var(--btn-danger-text); }
 .btn:disabled { opacity: 0.45; cursor: default; }
 
 .link-row {
@@ -312,19 +339,19 @@ select.plain {
 
 .scrim { position: fixed; inset: 0; background: var(--scrim); }
 .sheet {
+  background: var(--surface);
   position: fixed;
   left: 0; right: 0; bottom: 0;
   max-height: 82vh;
   min-height: 38vh;
   overflow-y: auto;
-  background: var(--bg);
   border-top: 1px solid var(--rule);
   animation: sheet-in var(--t-base) var(--ease) both;
   scrollbar-width: thin;
 }
 @keyframes sheet-in { from { transform: translateY(8px); opacity: 0 } to { transform: none; opacity: 1 } }
 
-.sheet .head { position: sticky; top: 0; z-index: 2; background: var(--bg); padding: 16px var(--pad) 0; }
+.sheet .head { position: sticky; top: 0; z-index: 2; background: var(--surface); padding: 16px var(--pad) 0; }
 .sheet .body { padding: 0 var(--pad) 24px; }
 
 .search {
@@ -375,6 +402,12 @@ select.plain {
 }
 
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+
+/* первая отрисовка без анимаций, чтобы не было вспышки */
+html:not(.ready) *, html:not(.ready) *::before, html:not(.ready) *::after {
+  transition: none !important;
+  animation: none !important;
+}
 
 @media (prefers-reduced-motion: reduce) {
   .phrase .fade, .sheet { animation: none !important; }
@@ -509,6 +542,26 @@ select.plain {
     const row = COUNTRY[(s.cc || "").toUpperCase()];
     if (!row) return null;
     return { name: row[0], in: row[1], to: row[2] };
+  };
+
+  /* ── тема: светлая / тёмная / системная ───────────────────────────────── */
+
+  const THEME_KEY = "veil.theme";
+
+  const resolveTheme = (mode) =>
+    mode === "dark" ? "dark"
+    : mode === "light" ? "light"
+    : (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+
+  const applyTheme = (snap) => {
+    let mode = snap && snap.settings && snap.settings.theme;
+    if (!mode) { try { mode = localStorage.getItem(THEME_KEY); } catch (e) {} }
+    if (!mode) mode = "system";
+    const resolved = resolveTheme(mode);
+    if (document.documentElement.dataset.theme !== resolved) {
+      document.documentElement.dataset.theme = resolved;
+    }
+    return mode;
   };
 
   /* ── состояние экранов ────────────────────────────────────────────────── */
@@ -736,8 +789,9 @@ select.plain {
         <div class="row">
           <span class="t">Тема</span>
           <span class="choice" role="group" aria-label="Тема">
-            <button type="button" data-action="set-theme" data-value="light" aria-pressed="${s.theme !== "dark"}">Светлая</button>
-            <button type="button" data-action="set-theme" data-value="dark" aria-pressed="${s.theme === "dark"}">Тёмная</button>
+            ${[["light", "Светлая"], ["dark", "Тёмная"], ["system", "Системная"]].map(([v, label]) =>
+              `<button type="button" data-action="set-theme" data-value="${v}" aria-pressed="${(s.theme || "system") === v}">${label}</button>`
+            ).join("")}
           </span>
         </div>
         ${row("Язык", "Русский")}
@@ -856,8 +910,7 @@ select.plain {
     if (!snap) return;
     const servers = adapter.serverList() || [];
     const view = $("#view");
-    const theme = S.snap && S.snap.settings && S.snap.settings.theme === "dark" ? "dark" : "light";
-    if (document.documentElement.dataset.theme !== theme) document.documentElement.dataset.theme = theme;
+    applyTheme(snap);
 
     let html;
     if (!snap.onboarded) html = viewOnboarding();
@@ -951,7 +1004,15 @@ select.plain {
     if (a === "server") return go("server");
     if (a === "logs") return openSheet("logs");
     if (a === "dns") return openSheet("dns");
-    if (a === "set-theme") return adapter.setSetting("theme", el.dataset.value);
+    if (a === "set-theme") {
+      const value = el.dataset.value;
+      try { localStorage.setItem(THEME_KEY, value); } catch (e) {}
+      adapter.setSetting("theme", value);
+      S.lastKey = "";                 // перерисовать строку настроек
+      applyTheme({ settings: { theme: value } });
+      render();
+      return;
+    }
 
     if (a === "set-kill") return adapter.setSetting("killSwitch", !snap.settings.killSwitch);
     if (a === "set-split") return adapter.setSetting("split", !snap.settings.split);
@@ -1023,6 +1084,15 @@ select.plain {
       if (snap.onboarded && wasOnboarded === false) S.last = "";
       render();
     });
+  }
+
+  if (window.matchMedia) {
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const onScheme = () => {
+      const mode = (S.snap && S.snap.settings && S.snap.settings.theme) || "system";
+      if (mode === "system") { applyTheme(S.snap); }
+    };
+    mq.addEventListener ? mq.addEventListener("change", onScheme) : mq.addListener(onScheme);
   }
 
   window.VEIL_UI = { setAdapter, state: S, mock };

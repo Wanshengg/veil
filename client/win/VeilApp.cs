@@ -243,7 +243,7 @@ namespace Veil
     {
         public static bool Split = true, KillSwitch = true, Autostart = false, Tun = false, Onboarded = false;
         public static string Dns = "Через туннель";
-        public static string Theme = "dark";
+        public static string Theme = "system";   // light | dark | system
 
         static string File2 { get { return Path.Combine(Engine.Dir, "settings.ini"); } }
 
@@ -271,6 +271,29 @@ namespace Veil
                 "\nautostart=" + (Autostart ? "1" : "0") + "\ntun=" + (Tun ? "1" : "0") +
                 "\nonboarded=" + (Onboarded ? "1" : "0") +
                 "\ndns=" + Dns + "\ntheme=" + Theme + "\n");
+        }
+
+        // Системная тема: Windows хранит её в AppsUseLightTheme (0 — тёмная).
+        public static bool OsPrefersDark()
+        {
+            try
+            {
+                using (RegistryKey k = Registry.CurrentUser.OpenSubKey(
+                    @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", false))
+                {
+                    if (k == null) return false;
+                    object v = k.GetValue("AppsUseLightTheme");
+                    return v != null && Convert.ToInt32(v) == 0;
+                }
+            }
+            catch { return false; }
+        }
+
+        public static bool ResolveDark()
+        {
+            if (Theme == "dark") return true;
+            if (Theme == "light") return false;
+            return OsPrefersDark();
         }
 
         public static void ApplyAutostart()
@@ -818,7 +841,7 @@ namespace Veil
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
             Settings.Load();
-            Program.ForceLightTitleBar(Handle, Settings.Theme == "dark" ? 1 : 0);
+            Program.ForceLightTitleBar(Handle, Settings.ResolveDark() ? 1 : 0);
             try
             {
                 using (Stream ico = System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream("veil.ico"))
@@ -848,8 +871,8 @@ namespace Veil
                     web.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
                     web.CoreWebView2.Settings.IsStatusBarEnabled = false;
                     web.CoreWebView2.Settings.AreDevToolsEnabled = false;
-                    var theme = Environment.OSVersion.Version.Build >= 22000 ? CoreWebView2PreferredColorScheme.Dark : CoreWebView2PreferredColorScheme.Auto;
-                    web.CoreWebView2.Profile.PreferredColorScheme = theme;
+                    // Auto: страница получает системный prefers-color-scheme, режим «Системная» работает честно
+                    web.CoreWebView2.Profile.PreferredColorScheme = CoreWebView2PreferredColorScheme.Auto;
                     web.CoreWebView2.WebMessageReceived += OnMessage;
                     web.CoreWebView2.Navigate(new Uri(ui).AbsoluteUri);
 
@@ -1119,7 +1142,7 @@ namespace Veil
                 {
                     Settings.Theme = v;
                     Settings.Save();
-                    Program.ForceLightTitleBar(Handle, v == "dark" ? 1 : 0);
+                    Program.ForceLightTitleBar(Handle, Settings.ResolveDark() ? 1 : 0);
                 }
                 if (k == "tun")
                 {

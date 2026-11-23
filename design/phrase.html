@@ -1,11 +1,22 @@
 <!doctype html>
-<html lang="ru">
+<html lang="ru" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Фраза — прототип</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<script>
+/* тема до первой отрисовки: вспышки светлого фона нет */
+(() => {
+  try {
+    const mode = localStorage.getItem("phrase.theme") || "system";
+    const dark = mode === "dark" || (mode === "system" &&
+      window.matchMedia("(prefers-color-scheme: dark)").matches);
+    document.documentElement.dataset.theme = dark ? "dark" : "light";
+  } catch (e) {}
+})();
+</script>
 <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.tailwindcss.com/3.4.16"></script>
 <script>
@@ -13,13 +24,14 @@
     theme: {
       extend: {
         colors: {
-          bg:     '#F6F4EF',
-          ink:    '#16181D',
-          sec:    '#6E7076',
-          rule:   '#E4E1D9',
-          accent: '#1E6B4F',
-          danger: '#B3261E',
-          mute:   '#B9B6AE'
+          bg:        'var(--bg)',
+          surface:   'var(--surface)',
+          ink:       'var(--ink)',
+          sec:       'var(--sec)',
+          rule:      'var(--rule)',
+          accent:    'var(--accent)',
+          danger:    'var(--danger)',
+          mute:      'var(--disabled)'
         },
         fontFamily: {
           sans: ['Golos Text', 'system-ui', 'sans-serif'],
@@ -30,16 +42,71 @@
   }
 </script>
 <style>
+  /* ── токены: светлая — бумага и тушь, тёмная — тёплый уголь ─────────── */
+  :root {
+    color-scheme: light;
+    --bg:        #F6F4EF;
+    --surface:   #F6F4EF;
+    --ink:       #16181D;
+    --sec:       #6E7076;
+    --rule:      #E4E1D9;
+    --accent:    #1E6B4F;
+    --danger:    #B3261E;
+    --disabled:  #B9B6AE;
+    --scrim:     rgba(22, 24, 29, 0.18);
+
+    --btn-fill-bg:     #16181D;
+    --btn-fill-text:   #FFFFFF;
+    --btn-line:        #16181D;
+    --btn-line-text:   #16181D;
+    --btn-danger-bg:   #B3261E;
+    --btn-danger-text: #FFFFFF;
+
+    --word-underline: rgba(22, 24, 29, 0.30);
+    --knob-off:       #6E7076;
+  }
+
+  [data-theme="dark"] {
+    color-scheme: dark;
+    --bg:        #141311;
+    --surface:   #1C1A17;
+    --ink:       #F0EDE6;
+    --sec:       #9A968C;
+    --rule:      #2A2823;
+    --accent:    #3E9E71;
+    --danger:    #DE6A5F;
+    --disabled:  #5A574F;
+    --scrim:     rgba(0, 0, 0, 0.55);
+
+    --btn-fill-bg:     #F0EDE6;
+    --btn-fill-text:   #141311;
+    --btn-line:        #6A655A;   /* 3.2:1 на фоне; #4A4740 давал 2.0:1 */
+    --btn-line-text:   #F0EDE6;
+    --btn-danger-bg:   #DE6A5F;
+    --btn-danger-text: #141311;
+
+    --word-underline: rgba(240, 237, 230, 0.40);
+    --knob-off:       #9A968C;
+  }
+
+  /* смена темы 150 мс, первая отрисовка — без анимации */
+  html:not(.ready) *, html:not(.ready) *::before, html:not(.ready) *::after {
+    transition: none !important;
+  }
+  html { transition: none; }
+  body, button, div, span, p, h1 { transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease; }
+
   html, body { height: 100%; }
   body {
-    background: #F6F4EF;
-    color: #16181D;
+    background: var(--bg);
+    color: var(--ink);
     -webkit-font-smoothing: antialiased;
     font-variant-numeric: tabular-nums;
   }
-  :focus-visible { outline: 2px solid #1E6B4F; outline-offset: 2px; border-radius: 2px; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
   .ui-fade { animation: ui-fade 120ms ease-out both; }
   @keyframes ui-fade { from { opacity: 0 } to { opacity: 1 } }
+  .sheet-surface { background: var(--surface); }
   .sheet-in { animation: sheet-in 180ms ease-out both; }
   @keyframes sheet-in { from { transform: translateY(8px); opacity: 0 } to { transform: none; opacity: 1 } }
   .no-scrollbar::-webkit-scrollbar { display: none; }
@@ -86,7 +153,7 @@ const byId = (id) => CITIES.find((c) => c.id === id) || CITIES[0];
 const phraseWord = {
   textDecorationLine: 'underline',
   textDecorationThickness: '1px',
-  textDecorationColor: 'rgba(22,24,29,0.30)',
+  textDecorationColor: 'var(--word-underline)',
   textUnderlineOffset: '4px'
 };
 
@@ -114,12 +181,12 @@ function Facts({ children, dot }) {
 function Button({ variant = 'filled', children, ...rest }) {
   const base = 'flex h-14 w-full items-center justify-start rounded-[12px] pl-5 text-left text-[17px] font-medium transition-colors duration-150 ease-out';
   const look = {
-    filled:  'bg-ink text-white',
-    outline: 'border border-ink text-ink bg-transparent',
-    danger:  'bg-[#B3261E] text-white'
+    filled:  { background: 'var(--btn-fill-bg)', color: 'var(--btn-fill-text)' },
+    outline: { border: '1px solid var(--btn-line)', color: 'var(--btn-line-text)', background: 'transparent' },
+    danger:  { background: 'var(--btn-danger-bg)', color: 'var(--btn-danger-text)' }
   }[variant];
   return (
-    <button type="button" className={base + ' ' + look} {...rest}>
+    <button type="button" className={base} style={look} {...rest}>
       {children}
     </button>
   );
@@ -231,8 +298,9 @@ function CitySheet({ active, onPick, onClose }) {
         className="absolute inset-0 h-full w-full"
         style={{ background: 'rgba(22,24,29,0.18)' }}
       />
-      <div className="sheet-in relative max-h-[80vh] overflow-y-auto border-t border-rule bg-bg no-scrollbar">
-        <div className="sticky top-0 z-10 bg-bg px-6 pt-4">
+      <div className="absolute inset-0" style={{ background: 'var(--scrim)' }} onClick={onClose} />
+        <div className="sheet-in sheet-surface relative max-h-[80vh] overflow-y-auto border-t border-rule no-scrollbar">
+        <div className="sheet-surface sticky top-0 z-10 px-6 pt-4">
           <input
             ref={inputRef}
             value={q}
@@ -284,13 +352,13 @@ function Switch({ checked, onChange, label }) {
         aria-hidden="true"
         className="relative h-6 w-11 rounded-[12px] border transition-colors duration-150 ease-out"
         style={{
-          background: checked ? '#1E6B4F' : 'transparent',
-          borderColor: checked ? '#1E6B4F' : '#B9B6AE'
+          background: checked ? 'var(--accent)' : 'transparent',
+          borderColor: checked ? 'var(--accent)' : 'var(--disabled)'
         }}
       >
         <span
           className="absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full transition-all duration-150 ease-out"
-          style={{ left: checked ? '24px' : '3px', background: checked ? '#F6F4EF' : '#6E7076' }}
+          style={{ left: checked ? '24px' : '3px', background: checked ? 'var(--bg)' : 'var(--knob-off)' }}
         />
       </span>
     </button>
@@ -309,7 +377,29 @@ function Row({ title, value, children, note }) {
   );
 }
 
-function SettingsScreen({ onBack }) {
+function ThemeChoice({ mode, onChange }) {
+  const opts = [['light', 'Светлая'], ['dark', 'Тёмная'], ['system', 'Системная']];
+  return (
+    <span className="flex items-center gap-4" role="group" aria-label="Тема">
+      {opts.map(([value, label]) => (
+        <button
+          key={value}
+          type="button"
+          onClick={() => onChange(value)}
+          aria-pressed={mode === value}
+          className={
+            'min-h-[44px] text-[13px] transition-colors duration-150 ease-out ' +
+            (mode === value ? 'font-medium text-ink' : 'text-sec')
+          }
+        >
+          {label}
+        </button>
+      ))}
+    </span>
+  );
+}
+
+function SettingsScreen({ onBack, theme, onTheme }) {
   const [kill, setKill] = useState(true);
   const [auto, setAuto] = useState(true);
 
@@ -338,7 +428,9 @@ function SettingsScreen({ onBack }) {
       </Row>
 
       <div className="pt-8 text-[12px] uppercase tracking-[0.08em] text-sec">Приложение</div>
-      <Row title="Тема" value="Светлая" />
+      <Row title="Тема">
+        <ThemeChoice mode={theme} onChange={onTheme} />
+      </Row>
       <Row title="Язык" value="Русский" />
       <Row title="Журнал" value="Открыть" />
     </div>
@@ -369,6 +461,25 @@ function App() {
   const [stage, setStage] = useState(0);
   const [city, setCity] = useState('ams');
   const [seconds, setSeconds] = useState(0);
+  const [theme, setTheme] = useState(() => {
+    try { return localStorage.getItem('phrase.theme') || 'system'; } catch (e) { return 'system'; }
+  });
+
+  // тема: применяем к документу, сохраняем, слушаем систему
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const apply = () => {
+      const dark = theme === 'dark' || (theme === 'system' && mq.matches);
+      document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+      try { localStorage.setItem('phrase.theme', theme); } catch (e) {}
+    };
+    apply();
+    document.documentElement.classList.add('ready');
+    setTimeout(() => document.documentElement.classList.add('ready'), 100);
+    if (theme !== 'system') return;
+    mq.addEventListener ? mq.addEventListener('change', apply) : mq.addListener(apply);
+    return () => mq.removeEventListener ? mq.removeEventListener('change', apply) : mq.removeListener(apply);
+  }, [theme]);
   const timers = useRef([]);
 
   const clearTimers = () => {
@@ -434,7 +545,7 @@ function App() {
   }, []);
 
   if (screen === 'onboarding') return <Onboarding onAllow={() => setScreen('main')} />;
-  if (screen === 'settings') return <SettingsScreen onBack={() => setScreen('main')} />;
+  if (screen === 'settings') return <SettingsScreen onBack={() => setScreen('main')} theme={theme} onTheme={setTheme} />;
 
   return (
     <>

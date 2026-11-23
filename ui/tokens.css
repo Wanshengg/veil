@@ -1,22 +1,28 @@
-/* veil — токены концепта «Фраза».
-   Бумага и тушь. Две темы — светлая и тёмная, обе без градиентов и теней. */
+/* veil — токены концепта «Фраза». Один источник правды для обеих тем.
+   Светлая — бумага и тушь. Тёмная — тёплый уголь, без синевы и без чистого чёрного. */
 
 :root {
-  /* светлая (по умолчанию) */
   color-scheme: light;
-  --bg:     #F6F4EF;
-  --ink:    #16181D;
-  --sec:    #6E7076;
-  --rule:   #E4E1D9;
-  --accent: #1E6B4F;
-  --danger: #B3261E;
-  --mute:   #B9B6AE;
 
-  --on-ink:    #FFFFFF;
-  --on-danger: #FFFFFF;
-  --word-line: rgba(22, 24, 29, 0.30);
+  --bg:        #F6F4EF;
+  --surface:   #F6F4EF;   /* шторка: в светлой совпадает с фоном, различима по волосятику */
+  --ink:       #16181D;
+  --sec:       #6E7076;
+  --rule:      #E4E1D9;
+  --accent:    #1E6B4F;
+  --danger:    #B3261E;
+  --disabled:  #B9B6AE;
   --scrim:     rgba(22, 24, 29, 0.18);
-  --knob-off:  #6E7076;
+
+  --btn-fill-bg:     var(--ink);
+  --btn-fill-text:   #FFFFFF;
+  --btn-line:        var(--ink);
+  --btn-line-text:   var(--ink);
+  --btn-danger-bg:   #B3261E;
+  --btn-danger-text: #FFFFFF;
+
+  --word-underline: rgba(22, 24, 29, 0.30);
+  --knob-off:       #6E7076;
 
   --sans: 'Golos Text', 'Segoe UI', system-ui, -apple-system, sans-serif;
   --mono: 'IBM Plex Mono', Consolas, ui-monospace, monospace;
@@ -33,23 +39,30 @@
   --r-btn: 12px;
 
   --t-fast: 120ms;
-  --t-base: 180ms;
+  --t-base: 150ms;
   --ease: cubic-bezier(0.2, 0.7, 0.3, 1);
 }
 
 [data-theme="dark"] {
   color-scheme: dark;
-  --bg:     #101216;
-  --ink:    #E9EBEF;
-  --sec:    #9AA1AC;
-  --rule:   #262A32;
-  --accent: #43C08F;
-  --danger: #E4695F;
-  --mute:   #50565F;
 
-  --on-ink:    #101216;
-  --on-danger: #1A0B0A;
-  --word-line: rgba(233, 235, 239, 0.34);
-  --scrim:     rgba(0, 0, 0, 0.58);
-  --knob-off:  #9AA1AC;
+  --bg:        #141311;
+  --surface:   #1C1A17;
+  --ink:       #F0EDE6;
+  --sec:       #9A968C;
+  --rule:      #2A2823;
+  --accent:    #3E9E71;
+  --danger:    #DE6A5F;
+  --disabled:  #5A574F;
+  --scrim:     rgba(0, 0, 0, 0.55);
+
+  --btn-fill-bg:     #F0EDE6;
+  --btn-fill-text:   #141311;
+  --btn-line:        #6A655A;   /* 3.2:1 на фоне; #4A4740 давал 2.0:1 */
+  --btn-line-text:   #F0EDE6;
+  --btn-danger-bg:   #DE6A5F;
+  --btn-danger-text: #141311;
+
+  --word-underline: rgba(240, 237, 230, 0.40);
+  --knob-off:       #9A968C;
 }

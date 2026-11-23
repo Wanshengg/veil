@@ -49,7 +49,7 @@ body {
   cursor: pointer;
   text-decoration: underline;
   text-decoration-thickness: 1px;
-  text-decoration-color: var(--word-line);
+  text-decoration-color: var(--word-underline);
   text-underline-offset: 4px;
 }
 .chev { font-size: 0.62em; color: var(--sec); margin-left: 2px; }
@@ -104,9 +104,9 @@ body {
   transition: background var(--t-base) var(--ease), color var(--t-base) var(--ease),
               border-color var(--t-base) var(--ease);
 }
-.btn.filled  { background: var(--ink); color: var(--on-ink); }
-.btn.outline { background: transparent; border-color: var(--ink); color: var(--ink); }
-.btn.danger  { background: var(--danger); color: var(--on-danger); }
+.btn.filled  { background: var(--btn-fill-bg); color: var(--btn-fill-text); }
+.btn.outline { background: transparent; border-color: var(--btn-line); color: var(--btn-line-text); }
+.btn.danger  { background: var(--btn-danger-bg); color: var(--btn-danger-text); }
 .btn:disabled { opacity: 0.45; cursor: default; }
 
 .link-row {
@@ -243,19 +243,19 @@ select.plain {
 
 .scrim { position: fixed; inset: 0; background: var(--scrim); }
 .sheet {
+  background: var(--surface);
   position: fixed;
   left: 0; right: 0; bottom: 0;
   max-height: 82vh;
   min-height: 38vh;
   overflow-y: auto;
-  background: var(--bg);
   border-top: 1px solid var(--rule);
   animation: sheet-in var(--t-base) var(--ease) both;
   scrollbar-width: thin;
 }
 @keyframes sheet-in { from { transform: translateY(8px); opacity: 0 } to { transform: none; opacity: 1 } }
 
-.sheet .head { position: sticky; top: 0; z-index: 2; background: var(--bg); padding: 16px var(--pad) 0; }
+.sheet .head { position: sticky; top: 0; z-index: 2; background: var(--surface); padding: 16px var(--pad) 0; }
 .sheet .body { padding: 0 var(--pad) 24px; }
 
 .search {
@@ -306,6 +306,12 @@ select.plain {
 }
 
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+
+/* первая отрисовка без анимаций, чтобы не было вспышки */
+html:not(.ready) *, html:not(.ready) *::before, html:not(.ready) *::after {
+  transition: none !important;
+  animation: none !important;
+}
 
 @media (prefers-reduced-motion: reduce) {
   .phrase .fade, .sheet { animation: none !important; }
