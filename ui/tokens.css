@@ -46,23 +46,24 @@
 [data-theme="dark"] {
   color-scheme: dark;
 
-  --bg:        #141311;
-  --surface:   #1C1A17;
-  --ink:       #F0EDE6;
-  --sec:       #9A968C;
-  --rule:      #2A2823;
+  /* строго нейтральные серые: R = G = B, без тёплого и холодного сдвига */
+  --bg:        #121212;
+  --surface:   #1B1B1B;
+  --ink:       #EDEDED;
+  --sec:       #9B9B9B;
+  --rule:      #2A2A2A;
   --accent:    #3E9E71;
   --danger:    #DE6A5F;
-  --disabled:  #5A574F;
-  --scrim:     rgba(0, 0, 0, 0.55);
+  --disabled:  #5A5A5A;
+  --scrim:     rgba(0, 0, 0, 0.60);
 
-  --btn-fill-bg:     #F0EDE6;
-  --btn-fill-text:   #141311;
-  --btn-line:        #6A655A;   /* 3.2:1 на фоне; #4A4740 давал 2.0:1 */
-  --btn-line-text:   #F0EDE6;
+  --btn-fill-bg:     #EDEDED;
+  --btn-fill-text:   #121212;
+  --btn-line:        #3A3A3A;
+  --btn-line-text:   #EDEDED;
   --btn-danger-bg:   #DE6A5F;
-  --btn-danger-text: #141311;
+  --btn-danger-text: #121212;
 
-  --word-underline: rgba(240, 237, 230, 0.40);
-  --knob-off:       #9A968C;
+  --word-underline: rgba(237, 237, 237, 0.40);
+  --knob-off:       #9B9B9B;
 }

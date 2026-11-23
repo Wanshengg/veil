@@ -171,8 +171,8 @@ namespace Veil
                 int useDark = dark == 1 ? 1 : 0;
                 DwmSetWindowAttribute(hwnd, 20, ref useDark, sizeof(int));
 
-                int caption = dark == 1 ? 0x00161210 : 0x00EFF4F6;   // BGR: #101216 / #F6F4EF
-                int textCol = dark == 1 ? 0x00EFEBE9 : 0x001D1816;   // BGR: #E9EBEF / #16181D
+                int caption = dark == 1 ? 0x00121212 : 0x00EFF4F6;   // BGR: #121212 / #F6F4EF
+                int textCol = dark == 1 ? 0x00EDEDED : 0x001D1816;   // BGR: #EDEDED / #16181D
                 DwmSetWindowAttribute(hwnd, 35, ref caption, sizeof(int));
                 DwmSetWindowAttribute(hwnd, 36, ref textCol, sizeof(int));
             }
