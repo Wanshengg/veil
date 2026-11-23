@@ -1,0 +1,22 @@
+{
+  "v": 2,
+  "pool": "chis",
+  "issued": "2026-11-23T05:40:00Z",
+  "ttl": 21600,
+  "servers": [
+    {
+      "id": "es",
+      "host": "se.example.com",
+      "ports": [
+        8443,
+        443,
+        2083,
+        9443
+      ],
+      "sni": "se.example.com",
+      "cc": "ES",
+      "country": "Испания",
+      "up": true
+    }
+  ]
+}
