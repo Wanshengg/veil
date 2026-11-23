@@ -129,6 +129,25 @@
 
   let adapter = mock;
 
+  // Строка фактов: меняется каждую секунду (таймер), поэтому обновляется точечно,
+  // без перерисовки экрана — иначе всё мигает.
+  const factsText = (snap, servers) => {
+    const active = servers.find((x) => x.id === snap.serverId) || servers[0] || null;
+    const st = snap.state;
+    if (st === "connected") {
+      const ip = active && /^\d+\.\d+\.\d+\.\d+$/.test(active.city || "") ? active.city : "—";
+      const ping = active && active.ping ? active.ping + " мс" : "—";
+      return `${ip} · ${ping} · ${clock(snap.traffic.uptime)}`;
+    }
+    if (st === "disconnected") {
+      const c = active ? country(active) : null;
+      return active ? `Выбран: ${c ? c.name : active.country}` : "Профилей нет";
+    }
+    if (st === "connecting") return "Рукопожатие";
+    if (st === "reconnecting") return "Повторное рукопожатие";
+    return "";
+  };
+
   /* ── мелкие части ─────────────────────────────────────────────────────── */
 
   const clock = (sec) => {
@@ -176,14 +195,7 @@
       error: `<span class="fade">Не удалось подключиться.</span>`
     }[st] || "";
 
-    const ip = active && /^\d+\.\d+\.\d+\.\d+$/.test(active.city || "") ? active.city : "—";
-    const facts = {
-      disconnected: active ? `Выбран: ${country(active) ? country(active).name : active.country}` : "Профилей нет",
-      connecting: "Рукопожатие",
-      connected: `${ip} · ${active && active.ping ? active.ping + " мс" : "—"} · ${clock(snap.traffic.uptime)}`,
-      reconnecting: "Повторное рукопожатие",
-      error: ""
-    }[st] || "";
+    const facts = factsText(snap, servers);
 
     const primary = {
       disconnected: ["Подключиться", "filled"],
@@ -198,7 +210,7 @@
     return `
     <section class="screen">
       <h1 class="phrase" aria-live="polite">${phrase}</h1>
-      ${facts ? `<${st === "disconnected" ? 'button class="facts facts-btn" data-action="cities" aria-label="Выбрать сервер"' : 'div class="facts"'}>${st === "connected" ? '<span class="dot" aria-hidden="true"></span>' : ""}<span>${esc(facts)}</span>${st === "disconnected" ? '<span class="chev">▾</span>' : ""}</${st === "disconnected" ? "button" : "div"}>` : ""}
+      ${facts ? `<${st === "disconnected" ? 'button class="facts facts-btn" data-action="cities" aria-label="Выбрать сервер"' : 'div class="facts"'}>${st === "connected" ? '<span class="dot" aria-hidden="true"></span>' : ""}<span data-live="facts">${esc(facts)}</span>${st === "disconnected" ? '<span class="chev">▾</span>' : ""}</${st === "disconnected" ? "button" : "div"}>` : ""}
       ${st === "error" ? `<p class="reason">${esc(snap.error || "Провайдер блокирует этот порт")}</p>` : ""}
 
       <div class="spacer"></div>
@@ -391,8 +403,15 @@
       : S.sheet === "logs" ? viewLogs(snap)
       : "";
 
-    const key = S.screen + "|" + snap.state + "|" + snap.onboarded + "|" + S.sheet;
-    if (html !== S.last || key !== S.lastKey) {
+    // структурный ключ: всё, что требует перерисовки. Таймер (uptime) сюда не входит.
+    const key = [
+      S.screen, S.sheet, snap.state, snap.onboarded ? 1 : 0, snap.serverId,
+      snap.settings.killSwitch, snap.settings.split, snap.settings.autostart, snap.settings.tun, snap.settings.dns,
+      snap.error || "", snap.keyMsg || "", snap.srvStatus || "", snap.srvBusy ? 1 : 0,
+      (snap.srvKeys || []).join(","), servers.length
+    ].join("|");
+
+    if (key !== S.lastKey) {
       // перенос введённого в поля: снапшот приходит раз в секунду
       const active = document.activeElement;
       const focused = active && active.id ? active.id : "";
@@ -412,8 +431,14 @@
         const el = document.getElementById(focused);
         if (el) { el.focus(); try { el.setSelectionRange(el.value.length, el.value.length); } catch (e) {} }
       }
-      S.last = html;
       S.lastKey = key;
+    }
+
+    // ежесекундное обновление — только текст фактов, без пересборки дерева
+    const live = document.querySelector('[data-live="facts"]');
+    if (live) {
+      const text = factsText(snap, servers);
+      if (live.textContent !== text) live.textContent = text;
     }
   }
 
