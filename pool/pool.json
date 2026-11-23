@@ -1,7 +1,7 @@
 {
   "v": 2,
   "pool": "chis",
-  "issued": "2026-11-23T22:55:00Z",
+  "issued": "2026-11-23T23:10:00Z",
   "ttl": 21600,
   "servers": [
     {
@@ -16,6 +16,18 @@
       "sni": "se.example.com",
       "cc": "ES",
       "country": "Испания",
+      "up": true
+    },
+    {
+      "id": "es-r",
+      "host": "fi.example.com",
+      "ports": [
+        10000
+      ],
+      "sni": "se.example.com",
+      "cc": "ES",
+      "country": "Испания",
+      "city": "через Хельсинки",
       "up": true
     },
     {
