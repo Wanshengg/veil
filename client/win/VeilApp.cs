@@ -46,6 +46,7 @@ namespace Veil
             {
                 Settings.Load();
                 SshCreds.Load();             // данные SSH прошлого раза
+                NoElevate = ArgOf(Environment.GetCommandLineArgs(), "--no-elevate").Length > 0;
                 SysProxy.RestoreIfStale();   // убрать висящий прокси прошлого запуска
                 ExtractAll();      // разложить DLL до первого обращения к WebView2
                 InitLoader();      // теперь тип CoreWebView2Environment доступен
@@ -88,6 +89,8 @@ namespace Veil
         {
             return "'" + (s ?? "").Replace("\\", "\\\\").Replace("'", "\\'") + "'";
         }
+
+        public static bool NoElevate;   // --no-elevate: не поднимать права автоматически
 
         public static string ArgOf(string[] args, string prefix)
         {
@@ -1037,6 +1040,7 @@ namespace Veil
                             if (pickArg.Length > 0)
                             {
                                 int idx;
+                                if (TryElevateForTun()) return;
                                 if (int.TryParse(pickArg, out idx) && idx >= 0 && idx < core.Profiles.Count)
                                 {
                                     core.Selected = idx;
@@ -1166,6 +1170,7 @@ namespace Veil
             if (cmd == "ready") { ready = true; PushSafe(); return; }
             if (cmd == "connect")
             {
+                if (TryElevateForTun()) return;
                 if (core.State == "connected") core.Kill();
                 else if (core.State != "connecting") ThreadPool.QueueUserWorkItem(delegate { core.OpenTunnel(); BeginInvoke(new MethodInvoker(Push)); });
             }
@@ -1390,7 +1395,8 @@ namespace Veil
                     {
                         MessageBox.Show(this,
                             "TUN-режим создаёт сетевой адаптер и требует прав администратора.\n\n" +
-                            "Закрой приложение и запусти его от имени администратора — тумблер станет рабочим.",
+                            "При нажатии «Подключиться» приложение само перезапустится с правами администратора " +
+                            "(Windows спросит подтверждение).",
                             "veil", MessageBoxButtons.OK, MessageBoxIcon.Information);
                         Settings.Tun = false;
                     }
@@ -1418,7 +1424,7 @@ namespace Veil
             return s.Substring(i, k - i).Trim();
         }
 
-        static bool IsAdmin()
+        public static bool IsAdmin()
         {
             try
             {
@@ -1430,6 +1436,29 @@ namespace Veil
         }
 
         // Push вызывается и из фоновых потоков — WebView2 требует UI-поток
+        // TUN требует прав администратора: перезапускаемся с повышением сами,
+        // вместо того чтобы просить пользователя «запусти от админа».
+        bool TryElevateForTun()
+        {
+            if (!Settings.Tun || IsAdmin() || Program.NoElevate) return false;
+            try
+            {
+                string self = System.Reflection.Assembly.GetExecutingAssembly().Location;
+                Process.Start(new ProcessStartInfo(self, "--connect") { UseShellExecute = true, Verb = "runas" });
+                Program.Log("elevate: перезапуск с правами администратора");
+                Application.Exit();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Program.Log("elevate: " + ex.Message);
+                MessageBox.Show(this, "Без прав администратора TUN-режим не поднимется.\n\n" +
+                    "Отключи TUN в настройках или разреши повышение прав в окне Windows.",
+                    "veil", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return false;
+            }
+        }
+
         void PushSafe()
         {
             try
