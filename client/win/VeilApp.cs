@@ -62,7 +62,12 @@ namespace Veil
             }
         }
 
-        static string ArgOf(string[] args, string prefix)
+        public static string QuoteJs(string s)
+        {
+            return "'" + (s ?? "").Replace("\\", "\\\\").Replace("'", "\\'") + "'";
+        }
+
+        public static string ArgOf(string[] args, string prefix)
         {
             foreach (string a in args) if (a.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return a.Substring(prefix.Length);
             return "";
@@ -152,6 +157,22 @@ namespace Veil
             return dst;
         }
 
+        [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
+        static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
+
+        // Светлая рамка окна: тёмный системный заголовок спорит с бумажным интерфейсом
+        public static void ForceLightTitleBar(IntPtr hwnd, int mode)
+        {
+            try
+            {
+                int dark = mode;                       // 20 — dark mode, 0 = светлая
+                DwmSetWindowAttribute(hwnd, 20, ref dark, sizeof(int));
+                int caption = 0x00F4F6F6;              // BGR под --bg (для сборок без поддержки 20)
+                DwmSetWindowAttribute(hwnd, 35, ref caption, sizeof(int));
+            }
+            catch { }
+        }
+
         public static void Log(string msg)
         {
             try
@@ -214,7 +235,7 @@ namespace Veil
 
     static class Settings
     {
-        public static bool Split = true, KillSwitch = true, Autostart = false, Tun = false;
+        public static bool Split = true, KillSwitch = true, Autostart = false, Tun = false, Onboarded = false;
         public static string Dns = "Через туннель";
         public static string Theme = "dark";
 
@@ -232,6 +253,7 @@ namespace Veil
                 if (k == "kill") KillSwitch = v != "0";
                 if (k == "autostart") Autostart = v != "0";
                 if (k == "tun") Tun = v != "0";
+                if (k == "onboarded") Onboarded = v != "0";
                 if (k == "dns") Dns = v;
                 if (k == "theme") Theme = v;
             }
@@ -241,6 +263,7 @@ namespace Veil
         {
             File.WriteAllText(File2, "split=" + (Split ? "1" : "0") + "\nkill=" + (KillSwitch ? "1" : "0") +
                 "\nautostart=" + (Autostart ? "1" : "0") + "\ntun=" + (Tun ? "1" : "0") +
+                "\nonboarded=" + (Onboarded ? "1" : "0") +
                 "\ndns=" + Dns + "\ntheme=" + Theme + "\n");
         }
 
@@ -782,13 +805,14 @@ namespace Veil
                 if (a.StartsWith("--tab=", StringComparison.OrdinalIgnoreCase)) openTab = a.Substring(6);
             }
             Text = "veil";
-            ClientSize = new Size(486, 812);
+            ClientSize = new Size(420, 860);
             MinimumSize = new Size(430, 700);
             StartPosition = FormStartPosition.CenterScreen;
             BackColor = Color.FromArgb(10, 12, 17);
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
             Settings.Load();
+            Program.ForceLightTitleBar(Handle, 0);
             try
             {
                 using (Stream ico = System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream("veil.ico"))
@@ -836,6 +860,21 @@ namespace Veil
                             if (openTab.Length > 0)
                                 await web.CoreWebView2.ExecuteScriptAsync(
                                     "document.querySelector('.tab[data-tab=" + openTab + "]').click()");
+                            // отладочный клик по селектору: veil.exe --click=[data-action=settings]
+                            string clickSel = Program.ArgOf(Environment.GetCommandLineArgs(), "--click=");
+                            if (clickSel.Length > 0)
+                            {
+                                Program.Log("debug click: " + clickSel);
+                                await web.CoreWebView2.ExecuteScriptAsync(
+                                    "(() => { const el = document.querySelector(" + Program.QuoteJs(clickSel) + "); if (!el) return 'нет элемента'; el.click(); return 'ok'; })()");
+                            // отладочный eval: veil.exe --eval=document.title
+                            string evalJs = Program.ArgOf(Environment.GetCommandLineArgs(), "--eval=");
+                            if (evalJs.Length > 0)
+                            {
+                                string res = await web.CoreWebView2.ExecuteScriptAsync(evalJs);
+                                Program.Log("eval: " + (res != null && res.Length > 600 ? res.Substring(0, 600) : res));
+                            }
+                            }
                         }
                         catch (Exception ex) { Program.Log("probe fail: " + ex.Message); }
                     };
@@ -919,6 +958,7 @@ namespace Veil
                 AddKeyFromText(txt);
             }
             else if (cmd == "key-add") { AddKeyFromText(Json(raw, "key")); }
+            else if (cmd == "onboard") { Settings.Onboarded = true; Settings.Save(); PushSafe(); }
             else if (cmd == "srv-install")
             {
                 srvTarget = new SshTarget {
@@ -1290,6 +1330,7 @@ namespace Veil
             }
             sb.Append("]");
             sb.Append(",\"keyMsg\":\"").Append(Esc(keyMsg)).Append("\"");
+            sb.Append(",\"onboarded\":").Append(Settings.Onboarded ? "true" : "false");
             sb.Append(",\"srvStatus\":\"").Append(Esc(srvStatus)).Append("\"");
             sb.Append(",\"srvBusy\":").Append(srvBusy ? "true" : "false");
             sb.Append(",\"srvHost\":\"").Append(Esc(srvHost)).Append("\",\"srvUser\":\"").Append(Esc(srvUser)).Append("\"");

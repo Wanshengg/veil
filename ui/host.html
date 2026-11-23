@@ -3,1597 +3,899 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="color-scheme" content="dark">
-<title>veil — защищённое соединение</title>
+<meta name="color-scheme" content="light">
+<title>veil</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-/* ============================================================================
-   veil — design tokens
-   Один файл, который меняет всё: цвет, типографику, ритм, движение.
-   Тема одна — тёмная.
-   ========================================================================== */
+/* veil — токены концепта «Фраза».
+   Светлая бумага, тушь, один акцент. Ни градиентов, ни теней, ни стекла. */
 
 :root {
-  /* ── палитра: графит + один акцент (индиго) + сигнальные ───────────────── */
-  --accent: #5B8CFF;
-  --accent-strong: #7AA3FF;
-  --accent-ink: #08101F;
-  --ok: #3BD98C;
-  --ok-soft: rgba(59, 217, 140, 0.14);
-  --warn: #F2B34B;
-  --warn-soft: rgba(242, 179, 75, 0.14);
-  --danger: #F26D6D;
-  --danger-soft: rgba(242, 109, 109, 0.14);
+  --bg:     #F6F4EF;
+  --ink:    #16181D;
+  --sec:    #6E7076;
+  --rule:   #E4E1D9;
+  --accent: #1E6B4F;
+  --danger: #B3261E;
+  --mute:   #B9B6AE;
 
-  /* ── типографика: один шрифт, два веса ────────────────────────────────── */
-  --font: "Inter", "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, sans-serif;
-  --w-regular: 450;
-  --w-strong: 620;
+  --sans: 'Golos Text', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --mono: 'IBM Plex Mono', Consolas, ui-monospace, monospace;
 
-  --fs-11: 11px;
-  --fs-12: 12px;
-  --fs-13: 13px;
-  --fs-15: 15px;
-  --fs-17: 17px;
-  --fs-22: 22px;
-  --fs-34: 34px;
-  --fs-46: 46px;
-
-  --lh-tight: 1.15;
-  --lh-body: 1.5;
+  --fs-phrase: 36px;
+  --fs-body:   15px;
+  --fs-btn:    17px;
+  --fs-facts:  13px;
+  --fs-caps:   12px;
   --tracking-caps: 0.08em;
 
-  /* ── ритм 4/8 ─────────────────────────────────────────────────────────── */
-  --s-1: 4px;
-  --s-2: 8px;
-  --s-3: 12px;
-  --s-4: 16px;
-  --s-5: 20px;
-  --s-6: 24px;
-  --s-7: 32px;
-  --s-8: 40px;
-  --s-9: 56px;
+  --step: 8px;
+  --pad:  24px;
+  --r-btn: 12px;
 
-  /* ── формы ────────────────────────────────────────────────────────────── */
-  --r-8: 8px;
-  --r-12: 12px;
-  --r-16: 16px;
-  --r-22: 22px;
-  --r-28: 28px;
-  --r-pill: 999px;
-
-  /* ── движение: 150–250 мс, ease-out ───────────────────────────────────── */
   --t-fast: 120ms;
   --t-base: 180ms;
-  --t-slow: 260ms;
   --ease: cubic-bezier(0.2, 0.7, 0.3, 1);
 }
 
-/* ── тёмная тема (по умолчанию) ─────────────────────────────────────────── */
-[data-theme="dark"] {
-  --bg: #0A0C11;
-  --bg-glow-1: rgba(91, 140, 255, 0.16);
-  --bg-glow-2: rgba(122, 96, 255, 0.12);
-
-  --layer-1: rgba(255, 255, 255, 0.035);
-  --layer-2: rgba(255, 255, 255, 0.06);
-  --layer-3: rgba(255, 255, 255, 0.09);
-  --layer-hover: rgba(255, 255, 255, 0.05);
-
-  --text: #EDF1F8;
-  --text-2: #98A3B6;
-  --text-3: #66707F;
-
-  --border: rgba(255, 255, 255, 0.07);
-  --border-strong: rgba(255, 255, 255, 0.13);
-
-  --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.05) inset,
-                 0 24px 48px -32px rgba(0, 0, 0, 0.9);
-  --shadow-hero: 0 0 0 1px rgba(255, 255, 255, 0.05) inset,
-                 0 30px 60px -30px rgba(91, 140, 255, 0.55);
-  --scrim: rgba(6, 8, 12, 0.66);
-}
-
-/* ── светлая тема ───────────────────────────────────────────────────────── */
-
-
 </style>
 <style>
-/* ============================================================================
-   veil — app styles. Все значения — из tokens.css, хардкода цветов нет.
-   ========================================================================== */
+/* veil — стили концепта «Фраза»: только текст, волосятики и один акцент. */
 
-*,
-*::before,
-*::after { box-sizing: border-box; }
+*, *::before, *::after { box-sizing: border-box; }
 
-html, body { height: 100%; }
+html, body { height: 100%; margin: 0; }
 
 body {
-  margin: 0;
-  font-family: var(--font);
-  font-weight: var(--w-regular);
-  font-size: var(--fs-15);
-  line-height: var(--lh-body);
-  color: var(--text);
   background: var(--bg);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: var(--fs-body);
+  font-weight: 400;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
-  overflow: hidden;
+  font-variant-numeric: tabular-nums;
 }
 
-/* фоновые свечения — глубина без «градиента на всём» */
-.bg {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 0;
-  overflow: hidden;
-}
-.bg::before,
-.bg::after {
-  content: "";
-  position: absolute;
-  width: 62vmax;
-  height: 62vmax;
-  border-radius: 50%;
-  filter: blur(80px);
-}
-.bg::before { background: var(--bg-glow-1); top: -28vmax; left: -18vmax; }
-.bg::after  { background: var(--bg-glow-2); bottom: -30vmax; right: -20vmax; }
+#view { min-height: 100%; }
 
-/* ── оболочка ──────────────────────────────────────────────────────────── */
-.shell {
-  position: relative;
-  z-index: 1;
-  height: 100%;
-  max-width: 1080px;
-  margin: 0 auto;
-  padding: var(--s-4) var(--s-4) 0;
+/* ── экран ─────────────────────────────────────────────────────────────── */
+
+.screen {
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
-  gap: var(--s-4);
+  padding: 72px var(--pad) 24px;
+}
+.screen.compact { padding-top: 12px; }
+
+/* ── фраза ─────────────────────────────────────────────────────────────── */
+
+.phrase {
+  margin: 0;
+  font-size: var(--fs-phrase);
+  font-weight: 500;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  text-wrap: pretty;
+}
+.phrase .fade { animation: fade var(--t-fast) ease-out both; }
+@keyframes fade { from { opacity: 0 } to { opacity: 1 } }
+
+.word {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-decoration-color: rgba(22, 24, 29, 0.30);
+  text-underline-offset: 4px;
+}
+.chev { font-size: 0.62em; color: var(--sec); margin-left: 2px; }
+
+/* ── строка фактов ─────────────────────────────────────────────────────── */
+
+.facts {
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: var(--fs-facts);
+  color: var(--sec);
+}
+.facts-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 0;
+  background: none;
+  border: 0;
+  font-family: var(--mono);
+  font-size: var(--fs-facts);
+  color: var(--sec);
+  cursor: pointer;
+  text-align: left;
+}
+.facts-btn .chev { font-size: 11px; margin-left: 2px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: 0 0 auto; }
+
+.reason { margin: 16px 0 0; font-size: var(--fs-facts); line-height: 1.5; color: var(--sec); }
+
+.spacer { margin-top: auto; }
+
+/* ── кнопки и строки-ссылки ────────────────────────────────────────────── */
+
+.btn {
+  height: 56px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 0 20px;
+  border: 1px solid transparent;
+  border-radius: var(--r-btn);
+  font-family: inherit;
+  font-size: var(--fs-btn);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--t-base) var(--ease), color var(--t-base) var(--ease),
+              border-color var(--t-base) var(--ease);
+}
+.btn.filled  { background: var(--ink); color: #fff; }
+.btn.outline { background: transparent; border-color: var(--ink); color: var(--ink); }
+.btn.danger  { background: var(--danger); color: #fff; }
+.btn:disabled { opacity: 0.45; cursor: default; }
+
+.link-row {
+  margin-top: 16px;
+  height: 56px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-top: 1px solid var(--rule);
+  font-family: inherit;
+  font-size: var(--fs-body);
+  color: var(--ink);
+  cursor: pointer;
+}
+.link-row + .link-row { margin-top: 0; border-top: 0; }
+.link-row .arrow { color: var(--sec); margin-left: 6px; }
+
+/* ── настройки ─────────────────────────────────────────────────────────── */
+
+.back {
+  height: 44px;
+  display: flex;
+  align-items: center;
+  padding: 0;
+  background: none;
+  border: 0;
+  font-family: inherit;
+  font-size: var(--fs-body);
+  color: var(--sec);
+  cursor: pointer;
 }
 
-.topbar {
+.caps {
+  font-size: var(--fs-caps);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--sec);
+}
+.group { margin-top: 32px; }
+
+.row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--s-3);
-  min-height: 44px;
+  gap: 16px;
+  min-height: 56px;
+  border-bottom: 1px solid var(--rule);
 }
+.row .t { font-size: var(--fs-body); }
+.row .v { font-family: var(--mono); font-size: var(--fs-facts); color: var(--sec); }
+.row .t, .row .v { min-width: 0; }
+.row.clickable { cursor: pointer; }
 
-.brand { display: flex; align-items: center; gap: var(--s-2); }
-.brand-mark {
-  width: 32px; height: 32px;
-  border-radius: 50%;
-  display: block;
-  object-fit: contain;
-  box-shadow: 0 6px 18px -8px rgba(91, 140, 255, 0.55);
+.note {
+  margin: 0;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--rule);
+  font-size: var(--fs-facts);
+  line-height: 1.5;
+  color: var(--sec);
 }
-.brand-name { font-weight: var(--w-strong); letter-spacing: -0.01em; }
-.brand-sub {
-  font-size: var(--fs-11);
-  color: var(--text-3);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-caps);
-}
-
-.top-actions { display: flex; align-items: center; gap: var(--s-2); }
-
-/* ── карточки ──────────────────────────────────────────────────────────── */
-.card {
-  background: var(--layer-1);
-  border: 1px solid var(--border);
-  border-radius: var(--r-22);
-  box-shadow: var(--shadow-card);
-  backdrop-filter: blur(18px) saturate(1.15);
-  -webkit-backdrop-filter: blur(18px) saturate(1.15);
-  padding: var(--s-4);
-}
-
-.card.flat { padding: var(--s-3); border-radius: var(--r-16); }
-
-.view {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding: 0 2px var(--s-6);
-  scrollbar-width: thin;
-  scrollbar-color: var(--border-strong) transparent;
-  scroll-behavior: smooth;
-}
-.view::-webkit-scrollbar { width: 8px; }
-.view::-webkit-scrollbar-thumb {
-  background: var(--border-strong);
-  border-radius: var(--r-pill);
-}
-.view::-webkit-scrollbar-track { background: transparent; }
-
-/* ── типографика ───────────────────────────────────────────────────────── */
-.caps {
-  font-size: var(--fs-11);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-caps);
-  color: var(--text-3);
-  font-weight: var(--w-strong);
-}
-.muted { color: var(--text-2); }
-.faint { color: var(--text-3); }
-.num {
-  font-variant-numeric: tabular-nums;
-  font-feature-settings: "tnum" 1;
-}
-.title { font-size: var(--fs-17); font-weight: var(--w-strong); letter-spacing: -0.01em; }
-.h1 { font-size: var(--fs-22); font-weight: var(--w-strong); letter-spacing: -0.02em; margin: 0; }
-
-/* ── кнопки ────────────────────────────────────────────────────────────── */
-.btn {
-  appearance: none;
-  border: 1px solid var(--border);
-  background: var(--layer-2);
-  color: var(--text);
-  font: inherit;
-  font-weight: var(--w-strong);
-  font-size: var(--fs-13);
-  min-height: 44px;
-  padding: 0 var(--s-4);
-  border-radius: var(--r-pill);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--s-2);
-  cursor: pointer;
-  transition: transform var(--t-fast) var(--ease),
-              background var(--t-base) var(--ease),
-              border-color var(--t-base) var(--ease),
-              opacity var(--t-base) var(--ease);
-}
-.btn:hover { background: var(--layer-3); }
-.btn:active { transform: scale(0.985); }
-.btn[disabled] { opacity: 0.45; cursor: not-allowed; }
-
-.btn.primary {
-  background: linear-gradient(135deg, var(--accent), #7C60FF);
-  border-color: transparent;
-  color: #fff;
-  box-shadow: 0 14px 30px -16px rgba(91, 140, 255, 0.9);
-}
-.btn.primary:hover { filter: brightness(1.06); }
-
-.btn.ghost { background: transparent; }
-.btn.icon { width: 44px; padding: 0; }
-.btn.danger { color: var(--danger); border-color: var(--danger-soft); background: var(--danger-soft); }
-
-.btn.hero {
-  min-height: 60px;
-  padding: 0 var(--s-7);
-  font-size: var(--fs-15);
-  border-radius: var(--r-pill);
-}
-
-/* фокус — всегда виден, но не «рамка везде» */
-:focus-visible {
-  outline: 2px solid var(--accent-strong);
-  outline-offset: 3px;
-  border-radius: var(--r-12);
-}
-
-/* ── статус ────────────────────────────────────────────────────────────── */
-.badge {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--s-2);
-  height: 30px;
-  padding: 0 var(--s-3);
-  border-radius: var(--r-pill);
-  font-size: var(--fs-12);
-  font-weight: var(--w-strong);
-  border: 1px solid var(--border);
-  background: var(--layer-2);
-  color: var(--text-2);
-}
-.badge .dot {
-  width: 8px; height: 8px; border-radius: 50%;
-  background: var(--text-3);
-}
-.badge[data-state="connected"] { color: var(--ok); border-color: var(--ok-soft); background: var(--ok-soft); }
-.badge[data-state="connected"] .dot { background: var(--ok); box-shadow: 0 0 0 4px var(--ok-soft); }
-.badge[data-state="connecting"] { color: var(--warn); border-color: var(--warn-soft); background: var(--warn-soft); }
-.badge[data-state="connecting"] .dot { background: var(--warn); animation: pulse 1.1s var(--ease) infinite; }
-.badge[data-state="error"] { color: var(--danger); border-color: var(--danger-soft); background: var(--danger-soft); }
-.badge[data-state="error"] .dot { background: var(--danger); }
-
-@keyframes pulse {
-  0%, 100% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(0.6); opacity: 0.5; }
-}
-
-/* ── главный экран ─────────────────────────────────────────────────────── */
-.home { display: grid; gap: var(--s-4); }
-
-.hero {
-  position: relative;
-  display: grid;
-  justify-items: center;
-  gap: var(--s-3);
-  padding: var(--s-4);
-  border-radius: var(--r-28);
-  background:
-    radial-gradient(120% 90% at 50% 0%, rgba(91, 140, 255, 0.14), transparent 60%),
-    var(--layer-1);
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow-card);
-  overflow: hidden;
-}
-
-.donut {
-  position: relative;
-  width: min(38vw, 168px);
-  aspect-ratio: 1;
-  display: grid;
-  place-items: center;
-  isolation: isolate;
-}
-.donut > svg { position: absolute; inset: 0; width: 100%; height: 100%; }
-.donut .ring-base { stroke: var(--border-strong); }
-
-.donut .core {
-  position: relative;
-  width: 58%;
-  aspect-ratio: 1;
-  border-radius: 50%;
-  border: 0;
-  cursor: pointer;
-  display: grid;
-  place-items: center;
-  gap: 2px;
-  color: var(--text);
-  background:
-    radial-gradient(80% 80% at 50% 20%, var(--layer-3), var(--layer-1));
-  box-shadow: var(--shadow-hero);
-  transition: transform var(--t-base) var(--ease), box-shadow var(--t-slow) var(--ease);
-}
-.donut .core:active { transform: scale(0.97); }
-.donut .core .glyph { width: 30px; height: 30px; opacity: 0.95; display: grid; place-items: center; }
-.donut .core .glyph svg { width: 26px; height: 26px; position: static; }
-.donut .core .label { font-size: var(--fs-11); letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-2); }
-
-.donut[data-state="connected"] .core {
-  background: radial-gradient(80% 80% at 50% 20%, rgba(59, 217, 140, 0.22), var(--layer-1));
-  box-shadow: 0 0 0 1px var(--ok-soft) inset, 0 0 60px -10px rgba(59, 217, 140, 0.55);
-}
-.donut[data-state="connected"] .ring-pulse { stroke: var(--ok); opacity: 0.55; animation: breathe 3.2s var(--ease) infinite; }
-.donut[data-state="connecting"] .ring-pulse { stroke: var(--warn); opacity: 0.85; animation: spin 1.6s linear infinite; transform-origin: 50% 50%; }
-.donut[data-state="error"] .ring-pulse { stroke: var(--danger); opacity: 0.7; }
-
-@keyframes breathe { 0%,100% { opacity: 0.15; } 50% { opacity: 0.55; } }
-@keyframes spin { to { transform: rotate(360deg); } }
-
-.hero-status { display: grid; justify-items: center; gap: 2px; }
-.hero-status .state { font-size: var(--fs-22); font-weight: var(--w-strong); letter-spacing: -0.02em; }
-.hero-status .where { font-size: var(--fs-13); color: var(--text-2); }
-.hero-status .where b { color: var(--text); font-weight: var(--w-strong); }
-
-.hero-actions { display: flex; gap: var(--s-2); flex-wrap: wrap; justify-content: center; }
-
-/* ── сетки и статы ─────────────────────────────────────────────────────── */
-.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-3); }
-.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s-3); }
-
-.stat { display: grid; gap: 2px; }
-.stat .value { font-size: var(--fs-22); font-weight: var(--w-strong); letter-spacing: -0.02em; }
-.stat .unit { font-size: var(--fs-12); color: var(--text-3); margin-left: 2px; }
-
-.chart-wrap { padding: var(--s-3) var(--s-4) var(--s-2); }
-.chart-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: var(--s-2); }
-.chart { width: 100%; height: 68px; display: block; overflow: visible; }
-.chart .area { fill: url(#chartFill); }
-.chart .line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linecap: round; }
-.chart .dot { fill: var(--accent); }
-
-/* ── быстрые переключатели ─────────────────────────────────────────────── */
-.quick { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s-3); }
-.quick .item {
-  display: grid; gap: var(--s-2);
-  padding: var(--s-3);
-  border-radius: var(--r-16);
-  border: 1px solid var(--border);
-  background: var(--layer-1);
-  transition: border-color var(--t-base) var(--ease), background var(--t-base) var(--ease);
-}
-.quick .item.on { border-color: var(--accent); background: rgba(91, 140, 255, 0.08); }
-.quick .item .name { font-size: var(--fs-12); color: var(--text-2); }
-.quick .item .state { font-size: var(--fs-13); font-weight: var(--w-strong); }
 
 /* ── переключатель ─────────────────────────────────────────────────────── */
-.toggle {
-  --w: 46px; --h: 28px;
-  width: var(--w); height: var(--h);
-  border-radius: var(--r-pill);
-  border: 1px solid var(--border-strong);
-  background: var(--layer-3);
-  position: relative;
-  cursor: pointer;
-  padding: 0;
-  transition: background var(--t-base) var(--ease), border-color var(--t-base) var(--ease);
-  flex: none;
-}
-.toggle::after {
-  content: "";
-  position: absolute;
-  top: 3px; left: 3px;
-  width: calc(var(--h) - 8px);
-  height: calc(var(--h) - 8px);
-  border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
-  transition: transform var(--t-base) var(--ease);
-}
-.toggle[aria-checked="true"] { background: var(--accent); border-color: transparent; }
-.toggle[aria-checked="true"]::after { transform: translateX(calc(var(--w) - var(--h))); }
-.toggle[aria-disabled="true"] { opacity: 0.4; cursor: not-allowed; }
 
-/* ── строки списков ────────────────────────────────────────────────────── */
-.list { display: grid; gap: var(--s-2); }
-
-.row {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: var(--s-3);
-  padding: var(--s-3);
-  border-radius: var(--r-16);
-  border: 1px solid var(--border);
-  background: var(--layer-1);
-  min-height: 64px;
-  transition: background var(--t-base) var(--ease), border-color var(--t-base) var(--ease);
-}
-.row:hover { background: var(--layer-2); }
-.row.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
-.row .main { display: grid; gap: 2px; min-width: 0; }
-.row .name { font-weight: var(--w-strong); font-size: var(--fs-15); display: flex; align-items: center; gap: var(--s-2); }
-.row .sub { font-size: var(--fs-12); color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.row .side { display: flex; align-items: center; gap: var(--s-2); }
-
-.flag {
-  width: 34px; height: 34px;
-  border-radius: 12px;
-  display: grid; place-items: center;
-  background: var(--layer-2);
-  border: 1px solid var(--border);
-  font-size: var(--fs-12);
-  font-weight: var(--w-strong);
-  letter-spacing: 0.02em;
-  color: var(--text-2);
-}
-
-.ping { font-size: var(--fs-13); font-weight: var(--w-strong); }
-.ping.good { color: var(--ok); }
-.ping.mid { color: var(--warn); }
-.ping.bad { color: var(--danger); }
-
-/* загрузка сервера — тонкая полоска */
-.loadpct {
-  font-size: var(--fs-11);
-  color: var(--text-3);
-  font-variant-numeric: tabular-nums;
-  min-width: 32px;
-  text-align: right;
-}
-.load { width: 54px; height: 4px; border-radius: var(--r-pill); background: var(--layer-3); overflow: hidden; }
-.load > i { display: block; height: 100%; background: var(--accent); border-radius: inherit; }
-
-.star {
-  border: 0; background: transparent;
-  width: 40px; height: 44px;
-  display: grid; place-items: center;
-  color: var(--text-3);
-  cursor: pointer;
-  border-radius: var(--r-12);
-}
-.star[aria-pressed="true"] { color: var(--warn); }
-
-/* ── поиск и фильтры ───────────────────────────────────────────────────── */
-.search {
-  display: flex; align-items: center; gap: var(--s-2);
-  padding: 0 var(--s-3);
-  height: 46px;
-  border-radius: var(--r-16);
-  border: 1px solid var(--border);
-  background: var(--layer-1);
-  color: var(--text-2);
-}
-.search input {
-  flex: 1;
-  min-width: 0;
-  border: 0;
-  outline: none;
-  background: transparent;
-  color: var(--text);
-  font: inherit;
-  font-size: var(--fs-15);
-}
-.search input::placeholder { color: var(--text-3); }
-
-.chips { display: flex; gap: var(--s-2); overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
-.chips::-webkit-scrollbar { display: none; }
-.chip {
-  flex: none;
-  height: 34px;
-  padding: 0 var(--s-3);
-  border-radius: var(--r-pill);
-  border: 1px solid var(--border);
-  background: var(--layer-1);
-  color: var(--text-2);
-  font-size: var(--fs-12);
-  font-weight: var(--w-strong);
-  cursor: pointer;
-  display: inline-flex; align-items: center; gap: var(--s-2);
-  transition: all var(--t-base) var(--ease);
-}
-.chip[aria-pressed="true"] { background: var(--accent); border-color: transparent; color: #fff; }
-
-/* ── подписка ──────────────────────────────────────────────────────────── */
-.plan { display: grid; gap: var(--s-4); }
-.plan-top { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--s-3); }
-.plan-name { font-size: var(--fs-22); font-weight: var(--w-strong); letter-spacing: -0.02em; }
-.bar { height: 8px; border-radius: var(--r-pill); background: var(--layer-3); overflow: hidden; }
-.bar > i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--accent), #7C60FF); }
-
-.kv { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s-3); }
-.kv .k { font-size: var(--fs-11); text-transform: uppercase; letter-spacing: var(--tracking-caps); color: var(--text-3); }
-.kv .v { font-size: var(--fs-17); font-weight: var(--w-strong); }
-
-/* ── настройки ─────────────────────────────────────────────────────────── */
-.group { display: grid; gap: var(--s-2); }
-.group-title { padding: 0 var(--s-1); }
-.setting {
-  display: flex; align-items: center; justify-content: space-between; gap: var(--s-3);
-  padding: var(--s-3) var(--s-4);
-  border-bottom: 1px solid var(--border);
-}
-.setting:last-child { border-bottom: 0; }
-.setting .label { display: grid; gap: 2px; }
-.setting .label .sub { font-size: var(--fs-12); color: var(--text-3); }
-select {
-  appearance: none;
-  height: 40px;
-  padding: 0 34px 0 var(--s-3);
-  max-width: 210px;
-  text-overflow: ellipsis;
-  border-radius: var(--r-12);
-  border: 1px solid var(--border);
-  background: var(--layer-2);
-  color: var(--text);
-  font: inherit;
-  font-size: var(--fs-13);
-  cursor: pointer;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1 1l5 5 5-5' fill='none' stroke='%2398A3B6' stroke-width='1.8' stroke-linecap='round'/></svg>");
-  background-repeat: no-repeat;
-  background-position: right 12px center;
-}
-
-/* ── скелетоны ─────────────────────────────────────────────────────────── */
-.skeleton {
-  border-radius: var(--r-12);
-  background: linear-gradient(90deg, var(--layer-2) 25%, var(--layer-3) 37%, var(--layer-2) 63%);
-  background-size: 400% 100%;
-  animation: shimmer 1.6s var(--ease) infinite;
-}
-.skeleton.row-sk { height: 64px; border-radius: var(--r-16); }
-.skeleton.line-sk { height: 14px; }
-@keyframes shimmer { 0% { background-position: 100% 0; } 100% { background-position: 0 0; } }
-
-/* ── пустые состояния ──────────────────────────────────────────────────── */
-.empty {
-  display: grid; justify-items: center; gap: var(--s-3);
-  padding: var(--s-8) var(--s-4);
-  text-align: center;
-}
-.empty .art {
-  width: 72px; height: 72px; border-radius: 40% 60% 55% 45% / 55% 45% 55% 45%;
-  background: var(--layer-2);
-  border: 1px solid var(--border);
-  display: grid; place-items: center;
-  color: var(--text-3);
-}
-.empty .t { font-weight: var(--w-strong); font-size: var(--fs-17); }
-.empty .d { color: var(--text-3); font-size: var(--fs-13); max-width: 34ch; }
-
-/* ── шторка (sheet) ────────────────────────────────────────────────────── */
-.scrim {
-  position: fixed; inset: 0; z-index: 40;
-  background: var(--scrim);
-  backdrop-filter: blur(2px);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity var(--t-base) var(--ease);
-}
-.sheet {
-  position: fixed; left: 50%; bottom: 0; z-index: 41;
-  width: min(560px, 100vw - 16px);
-  transform: translate(-50%, 104%);
-  transition: transform var(--t-slow) var(--ease);
-  background: var(--layer-1);
-  border: 1px solid var(--border-strong);
-  border-bottom: 0;
-  border-radius: var(--r-28) var(--r-28) 0 0;
-  box-shadow: 0 -30px 80px -40px rgba(0, 0, 0, 0.9);
-  padding: var(--s-4) var(--s-4) var(--s-6);
-  display: grid; gap: var(--s-3);
-}
-.sheet-handle { width: 40px; height: 4px; border-radius: var(--r-pill); background: var(--border-strong); justify-self: center; }
-body[data-overlay] .scrim { opacity: 1; pointer-events: auto; }
-body[data-overlay] .sheet { transform: translate(-50%, 0); }
-
-/* ── тосты ─────────────────────────────────────────────────────────────── */
-.toasts {
-  position: fixed; left: 50%; bottom: 88px; z-index: 60;
-  transform: translateX(-50%);
-  display: grid; gap: var(--s-2);
-  width: min(420px, calc(100vw - 32px));
-}
-.toast {
-  padding: var(--s-3) var(--s-4);
-  border-radius: var(--r-16);
-  background: var(--layer-3);
-  border: 1px solid var(--border-strong);
-  box-shadow: var(--shadow-card);
-  font-size: var(--fs-13);
-  animation: toast-in var(--t-slow) var(--ease);
-}
-.toast[data-kind="error"] { border-color: var(--danger-soft); color: var(--danger); }
-@keyframes toast-in { from { opacity: 0; transform: translateY(8px); } }
-
-/* ── табы ──────────────────────────────────────────────────────────────── */
-.tabs {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: 1fr;
-  gap: 2px;
-  padding: var(--s-2) 0 calc(var(--s-3) + env(safe-area-inset-bottom));
-  background: transparent;
-  border: 0;
-}
-.tab {
-  min-width: 0;
-  min-height: 52px;
-  padding: 6px 2px;
-  border: 0;
-  background: transparent;
-  color: var(--text-3);
-  font: inherit;
-  font-size: var(--fs-11);
-  font-weight: var(--w-strong);
-  display: grid;
-  justify-items: center;
-  align-content: center;
-  gap: 3px;
-  border-radius: var(--r-12);
-  cursor: pointer;
-  transition: color var(--t-base) var(--ease), background var(--t-base) var(--ease);
-}
-.tab:hover { background: var(--layer-hover); }
-.tab svg { width: 19px; height: 19px; opacity: 0.9; }
-.tab[aria-selected="true"] { color: var(--text); background: transparent; }
-.tab[aria-selected="true"] svg { color: var(--accent); }
-.tab[aria-selected="true"] svg { color: var(--accent); }
-
-/* ── десктоп ───────────────────────────────────────────────────────────── */
-@media (min-width: 900px) {
-  .shell { padding: var(--s-6) var(--s-6) 0; }
-  .view { padding-bottom: var(--s-5); }
-  .tabs {
-    order: 1;
-    border: 1px solid var(--border);
-    border-radius: var(--r-16);
-    margin-bottom: var(--s-2);
-  }
-  .shell > .view { order: 2; }
-  .home { grid-template-columns: 1.06fr 1fr; align-items: start; }
-  .side-col { display: grid; gap: var(--s-3); align-content: start; }
-  .home .hero { grid-row: span 2; }
-  .grid-3 { grid-template-columns: repeat(3, 1fr); }
-}
-
-/* ── уважение к prefers-reduced-motion ─────────────────────────────────── */
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation-duration: 0.001ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.001ms !important;
-    scroll-behavior: auto !important;
-  }
-}
-
-/* ── плитки серверов на главной ─────────────────────────────────────────── */
-.tiles-head { padding: var(--s-2) var(--s-1) 0; }
-.tiles {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--s-2);
-}
-
-.tile {
-  position: relative;
-  display: grid;
-  gap: 2px;
-  padding: var(--s-3);
-  text-align: left;
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
-  background: var(--layer-1);
-  border: 1px solid var(--border);
-  border-radius: var(--r-16);
-  transition: background var(--t-base) var(--ease), border-color var(--t-base) var(--ease),
-              transform var(--t-fast) var(--ease);
-}
-.tile:hover { background: var(--layer-2); border-color: var(--border-strong); }
-.tile:active { transform: scale(0.985); }
-.tile[aria-pressed="true"] {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent) inset, 0 8px 24px rgba(91, 140, 255, 0.14);
-}
-.tile-top { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); }
-.tile-name { font-weight: var(--w-strong); font-size: var(--fs-15); margin-top: var(--s-2); }
-.tile-sub { font-size: var(--fs-12); color: var(--text-3); }
-.tile-star {
-  position: absolute; top: 6px; right: 6px;
-  width: 22px; height: 22px;
-  color: var(--text-3);
-  opacity: 0;
-  transition: opacity var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
-}
-.tile:hover .tile-star, .tile-star[aria-pressed="true"] { opacity: 1; }
-.tile-star[aria-pressed="true"] { color: var(--accent); }
-.tile-live {
-  display: inline-block;
-  width: 7px; height: 7px; border-radius: 50%;
-  margin-right: 7px;
-  vertical-align: middle;
-  background: var(--ok);
-  box-shadow: 0 0 0 4px var(--ok-soft);
-  animation: pulse 2s var(--ease) infinite;
-}
-@keyframes pulse {
-  0%, 100% { box-shadow: 0 0 0 3px var(--ok-soft); }
-  50% { box-shadow: 0 0 0 7px transparent; }
-}
-
-/* ── строка состояния на главной ────────────────────────────────────────── */
-.status-strip {
+.switch {
+  width: 44px;
+  height: 44px;
   display: flex;
   align-items: center;
-  gap: var(--s-3);
-  padding: var(--s-3) var(--s-4);
-  background: var(--layer-1);
-  border: 1px solid var(--border);
-  border-radius: var(--r-22);
-  box-shadow: var(--shadow-card);
-}
-.strip-dot {
-  width: 9px; height: 9px; border-radius: 50%;
-  background: var(--text-3);
+  justify-content: flex-end;
+  padding: 0;
+  background: none;
+  border: 0;
+  cursor: pointer;
   flex: 0 0 auto;
 }
-.status-strip[data-state="connected"] { border-color: color-mix(in srgb, var(--ok) 40%, var(--border)); }
-.status-strip[data-state="connected"] .strip-dot {
-  background: var(--ok);
-  box-shadow: 0 0 0 4px var(--ok-soft);
-  animation: pulse 2.4s var(--ease) infinite;
+.switch .track {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  border: 1px solid var(--mute);
+  border-radius: var(--r-btn);
+  transition: background var(--t-base) var(--ease), border-color var(--t-base) var(--ease);
 }
-.status-strip[data-state="connecting"] .strip-dot { background: var(--warn); box-shadow: 0 0 0 4px var(--warn-soft); }
-.status-strip[data-state="error"] .strip-dot { background: var(--danger); box-shadow: 0 0 0 4px var(--danger-soft); }
-.strip-text { display: grid; gap: 2px; min-width: 0; flex: 1; }
-.strip-title { font-size: var(--fs-15); font-weight: var(--w-strong); }
-.strip-sub { font-size: var(--fs-12); color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.strip-btn { min-height: 36px; }
-
-/* ── экран «Ключ» ───────────────────────────────────────────────────────── */
-.add { display: grid; gap: var(--s-4); }
-.add-head { display: grid; gap: var(--s-2); }
-.add-head .title { font-size: var(--fs-22); font-weight: var(--w-strong); letter-spacing: -0.02em; }
-.add-head .faint { font-size: var(--fs-13); color: var(--text-3); line-height: var(--lh-body); }
-
-.paste-row {
-  display: flex;
-  align-items: stretch;
-  gap: 0;
-  background: var(--layer-1);
-  border: 1px solid var(--border);
-  border-radius: var(--r-16);
-  overflow: hidden;
-  transition: border-color var(--t-base) var(--ease);
+.switch .knob {
+  position: absolute;
+  top: 50%;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--sec);
+  transform: translateY(-50%);
+  transition: left var(--t-base) var(--ease), background var(--t-base) var(--ease);
 }
-.paste-row:focus-within { border-color: var(--border-strong); }
-.paste-row input {
-  flex: 1;
-  min-width: 0;
-  border: 0;
-  background: transparent;
-  color: var(--text);
-  font: inherit;
-  font-size: var(--fs-13);
-  padding: var(--s-4);
-  outline: none;
-}
-.paste-row input::placeholder { color: var(--text-3); }
-.paste-row .btn {
-  border: 0;
-  border-radius: 0;
-  min-height: 52px;
-  padding: 0 var(--s-5);
-  border-left: 1px solid var(--border);
-}
+.switch[aria-checked="true"] .track { background: var(--accent); border-color: var(--accent); }
+.switch[aria-checked="true"] .knob { left: 24px; background: var(--bg); }
 
-.paste-msg { min-height: 18px; font-size: var(--fs-12); color: var(--text-3); }
-.paste-msg.is-ok { color: var(--ok); }
-.paste-msg.is-error { color: var(--danger); }
+/* ── поля ──────────────────────────────────────────────────────────────── */
 
-.add-hint {
-  display: grid;
-  gap: var(--s-2);
-  padding: var(--s-4);
-  background: var(--layer-1);
-  border: 1px solid var(--border);
-  border-radius: var(--r-16);
-}
-.add-hint .faint { font-size: var(--fs-12); color: var(--text-3); line-height: 1.6; }
-.add-hint code { color: var(--text-2); font-size: var(--fs-12); }
-
-/* ── экран «Свой сервер» ────────────────────────────────────────────────── */
-.srv-form { display: grid; gap: var(--s-3); }
-.srv-hint { font-size: var(--fs-13); line-height: 1.55; color: var(--text-3); }
-.srv-grid { display: grid; gap: var(--s-3); }
-.field { display: grid; gap: 6px; }
-.field .caps { font-size: var(--fs-11); }
+.field { display: block; margin-top: 20px; }
+.field .caps { display: block; margin-bottom: 6px; }
 .field input {
-  background: var(--layer-1);
-  border: 1px solid var(--border);
-  border-radius: var(--r-12);
-  padding: 10px var(--s-3);
-  color: var(--text);
-  font: inherit;
-  font-size: var(--fs-13);
-  outline: none;
+  width: 100%;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  background: transparent;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: var(--fs-body);
   transition: border-color var(--t-base) var(--ease);
 }
-.field input:focus { border-color: var(--border-strong); }
-.field input:disabled { opacity: 0.55; }
-.srv-note { font-size: var(--fs-11); color: var(--text-3); line-height: 1.5; }
-.srv-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: var(--s-2); }
-.srv-actions { display: flex; gap: var(--s-2); margin-top: var(--s-3); flex-wrap: wrap; }
-.srv-actions input {
-  flex: 1;
-  min-width: 140px;
-  background: var(--layer-1);
-  border: 1px solid var(--border);
-  border-radius: var(--r-12);
-  padding: 10px var(--s-3);
-  color: var(--text);
-  font: inherit;
-  font-size: var(--fs-13);
-  outline: none;
+.field input:focus { outline: none; border-bottom-color: var(--ink); }
+.field input::placeholder { color: var(--sec); opacity: 0.75; }
+
+select.plain {
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  padding: 6px 0;
+  font-family: inherit;
+  font-size: var(--fs-body);
+  color: var(--ink);
 }
-.srv-buttons { display: flex; gap: var(--s-2); flex-wrap: wrap; }
-.srv-buttons .btn { flex: 1; min-width: 150px; }
+
+.actions { display: flex; flex-direction: column; gap: 8px; margin-top: 24px; }
+
+/* ── шторка ────────────────────────────────────────────────────────────── */
+
+.scrim { position: fixed; inset: 0; background: rgba(22, 24, 29, 0.18); }
+.sheet {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  max-height: 82vh;
+  min-height: 38vh;
+  overflow-y: auto;
+  background: var(--bg);
+  border-top: 1px solid var(--rule);
+  animation: sheet-in var(--t-base) var(--ease) both;
+  scrollbar-width: thin;
+}
+@keyframes sheet-in { from { transform: translateY(8px); opacity: 0 } to { transform: none; opacity: 1 } }
+
+.sheet .head { position: sticky; top: 0; z-index: 2; background: var(--bg); padding: 16px var(--pad) 0; }
+.sheet .body { padding: 0 var(--pad) 24px; }
+
+.search {
+  width: 100%;
+  height: 48px;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  background: transparent;
+  font-family: inherit;
+  font-size: var(--fs-body);
+  color: var(--ink);
+}
+.search:focus { outline: none; border-bottom-color: var(--ink); }
+
+.city {
+  width: 100%;
+  min-height: 60px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0;
+  background: none;
+  border: 0;
+  text-align: left;
+  font-family: inherit;
+  cursor: pointer;
+}
+.city .mark { width: 8px; flex: 0 0 8px; }
+.city .mark i { display: block; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.city .name { display: block; font-size: 20px; font-weight: 500; line-height: 1.25; }
+.city[aria-current="true"] .name { font-weight: 600; }
+.city .country { display: block; font-size: var(--fs-facts); color: var(--sec); }
+.city .ping { margin-left: auto; font-family: var(--mono); font-size: var(--fs-facts); color: var(--sec); }
+
+/* ── служебные тексты ──────────────────────────────────────────────────── */
+
+.msg { margin-top: 16px; min-height: 18px; font-size: var(--fs-facts); color: var(--sec); }
+.msg.err { color: var(--danger); }
+.mono-block {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: var(--fs-facts);
+  line-height: 1.6;
+  color: var(--sec);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .phrase .fade, .sheet { animation: none !important; }
+  * { transition: none !important; }
+}
 
 </style>
 </head>
 <body>
-<div class="bg" aria-hidden="true"></div>
-
-<div class="shell">
-  <header class="topbar">
-    <div class="brand">
-      <img class="brand-mark" src="data:image/png;base64,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" alt="" aria-hidden="true">
-      <div>
-        <div class="brand-name">veil</div>
-        <div class="brand-sub">tls tunnel</div>
-      </div>
-    </div>
-    <div class="top-actions">
-      <span id="topBadgeHost" role="status" aria-live="polite"><span class="badge" data-state="disconnected">
-        <span class="dot" aria-hidden="true"></span>Не подключено
-      </span></span>
-    </div>
-  </header>
-
-  <main class="view" id="view" tabindex="-1"></main>
-
-  <nav class="tabs" role="tablist" aria-label="Разделы">
-    <button class="tab" role="tab" data-tab="home" aria-selected="true">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 4v5c0 4.2-2.9 7.6-7 9-4.1-1.4-7-4.8-7-9V7l7-4z"/></svg>
-      Главная
-    </button>
-    <button class="tab" role="tab" data-tab="add" aria-selected="false">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-      Ключ
-    </button>
-    <button class="tab" role="tab" data-tab="server" aria-selected="false">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></svg>
-      Сервер
-    </button>
-    <button class="tab" role="tab" data-tab="settings" aria-selected="false">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 00-.1-1.2l2-1.5-2-3.4-2.3 1a7 7 0 00-2-1.2L14.2 3H9.8l-.4 2.7a7 7 0 00-2 1.2l-2.3-1-2 3.4 2 1.5A7 7 0 005 12c0 .4 0 .8.1 1.2l-2 1.5 2 3.4 2.3-1a7 7 0 002 1.2l.4 2.7h4.4l.4-2.7a7 7 0 002-1.2l2.3 1 2-3.4-2-1.5c.1-.4.1-.8.1-1.2z"/></svg>
-      Настройки
-    </button>
-  </nav>
-</div>
-
-<div class="scrim" id="scrim" hidden></div>
-<div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" hidden>
-  <div class="sheet-handle" aria-hidden="true"></div>
-  <h2 class="title" id="sheetTitle">—</h2>
-  <div id="sheetBody"></div>
-</div>
-<div class="toasts" id="toasts" aria-live="polite"></div>
-
+<main id="view" tabindex="-1"></main>
+<div id="overlay"></div>
 <script>
-/* ============================================================================
-   veil UI — слой представления.
-   Логика VPN полностью спрятана за адаптером: window.VEIL_UI.setAdapter(adapter).
-   Мок-адаптер ниже можно заменить одной строкой на реальное ядро.
-   ========================================================================== */
+/* veil — интерфейс концепта «Фраза».
+   Состояние приходит снапшотом от ядра; весь VPN-слой за адаптером.
+   Экраны: онбординг → главный (фраза) → выбор сервера → настройки → ключи/сервер. */
+
 (() => {
   "use strict";
 
-  /* ── утилиты ─────────────────────────────────────────────────────────── */
   const $ = (sel, root = document) => root.querySelector(sel);
   const esc = (s) =>
     String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-  const state = {
-    tab: "home",
+  /* ── страны: как называть в фразе ─────────────────────────────────────── */
+
+  const COUNTRY = {
+    ES: ["Испания", "Испании", "Испанию"],
+    DE: ["Германия", "Германии", "Германию"],
+    NL: ["Нидерланды", "Нидерландов", "Нидерландам"],
+    FI: ["Финляндия", "Финляндии", "Финляндию"],
+    SE: ["Швеция", "Швеции", "Швецию"],
+    PL: ["Польша", "Польше", "Польшу"],
+    TR: ["Турция", "Турции", "Турцию"],
+    KZ: ["Казахстан", "Казахстане", "Казахстану"],
+    US: ["США", "США", "США"],
+    GB: ["Великобритания", "Великобритании", "Великобританию"],
+    FR: ["Франция", "Франции", "Францию"],
+    IT: ["Италия", "Италии", "Италию"],
+    CH: ["Швейцария", "Швейцарии", "Швейцарию"],
+    AT: ["Австрия", "Австрии", "Австрию"],
+    CZ: ["Чехия", "Чехии", "Чехию"],
+    RO: ["Румыния", "Румынии", "Румынию"],
+    RS: ["Сербия", "Сербии", "Сербию"],
+    LT: ["Литва", "Литве", "Литву"],
+    LV: ["Латвия", "Латвии", "Латвию"],
+    EE: ["Эстония", "Эстонии", "Эстонию"],
+    BG: ["Болгария", "Болгарии", "Болгарию"],
+    MD: ["Молдавия", "Молдавии", "Молдавию"],
+    GE: ["Грузия", "Грузии", "Грузию"],
+    AM: ["Армения", "Армении", "Армению"],
+    AE: ["ОАЭ", "ОАЭ", "ОАЭ"],
+    SG: ["Сингапур", "Сингапуре", "Сингапуру"],
+    HK: ["Гонконг", "Гонконге", "Гонконгу"],
+    JP: ["Япония", "Японии", "Японию"],
+    KR: ["Корея", "Корее", "Корею"],
+    CA: ["Канада", "Канаде", "Канаду"],
+    BR: ["Бразилия", "Бразилии", "Бразилию"],
+    IN: ["Индия", "Индии", "Индию"],
+    IL: ["Израиль", "Израиле", "Израилю"],
+    TH: ["Таиланд", "Таиланде", "Таиланду"],
+    VN: ["Вьетнам", "Вьетнаме", "Вьетнаму"],
+    ID: ["Индонезия", "Индонезии", "Индонезию"],
+    MX: ["Мексика", "Мексике", "Мексику"],
+    AR: ["Аргентина", "Аргентине", "Аргентину"],
+    ZA: ["ЮАР", "ЮАР", "ЮАР"],
+    AU: ["Австралия", "Австралии", "Австралию"],
+    PT: ["Португалия", "Португалии", "Португалию"],
+    IE: ["Ирландия", "Ирландии", "Ирландию"],
+    NO: ["Норвегия", "Норвегии", "Норвегию"],
+    DK: ["Дания", "Дании", "Данию"],
+    BE: ["Бельгия", "Бельгии", "Бельгию"],
+    LU: ["Люксембург", "Люксембурге", "Люксембургу"],
+    IS: ["Исландия", "Исландии", "Исландию"],
+    GR: ["Греция", "Греции", "Грецию"],
+    HR: ["Хорватия", "Хорватии", "Хорватию"],
+    CY: ["Кипр", "Кипре", "Кипру"],
+    UA: ["Украина", "Украине", "Украину"],
+    BY: ["Беларусь", "Беларуси", "Беларусь"],
+    AZ: ["Азербайджан", "Азербайджане", "Азербайджану"],
+    UZ: ["Узбекистан", "Узбекистане", "Узбекистану"],
+    KG: ["Киргизия", "Киргизии", "Киргизию"]
+  };
+
+  const country = (s) => {
+    if (!s) return null;
+    const row = COUNTRY[(s.cc || "").toUpperCase()];
+    if (!row) return null;
+    return { name: row[0], in: row[1], to: row[2] };
+  };
+
+  /* ── состояние экранов ────────────────────────────────────────────────── */
+
+  const S = {
+    screen: "main",      // main | settings | keys | server
+    sheet: "",           // cities | logs
     query: "",
-    country: "all",
-    onlyFav: false,
-    snapshot: null,
-    loading: false,
-    forced: new URLSearchParams(location.search).get("state") || "",
-    demo: new URLSearchParams(location.search).has("demo"),
+    snap: null,
+    last: ""
   };
 
-  /* ── иконки (inline SVG, без внешних шрифтов) ────────────────────────── */
-  const icon = {
-    power: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M12 4v7"/><path d="M7.2 6.6a8 8 0 1010.6 0"/></svg>`,
-    search: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/></svg>`,
-    star: (on) => `<svg width="18" height="18" viewBox="0 0 24 24" fill="${on ? "currentColor" : "none"}" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.6l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.8-5.2 2.8 1-5.8L3.5 9.8l5.9-.9L12 3.6z"/></svg>`,
-    check: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12.5l5 5L20 6.5"/></svg>`,
-    alert: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M12 8v5"/><circle cx="12" cy="16.6" r="1"/><path d="M10.3 4.4L3.5 17a2 2 0 001.8 3h13.4a2 2 0 001.8-3L13.7 4.4a2 2 0 00-3.4 0z"/></svg>`,
-    globe: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.6 2.6 15.4 0 18M12 3C9.4 5.6 9.4 18.4 12 21"/></svg>`,
-    chevron: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>`,
-    arrowDown: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v16m0 0l6-6m-6 6l-6-6"/></svg>`,
-    arrowUp: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20V4m0 0l6 6m-6-6l-6 6"/></svg>`,
-    wifiOff: `<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M2 3l20 18"/><path d="M5 10.5a11 11 0 014.2-2.4M2.5 7A16 16 0 0112 4c2.4 0 4.6.6 6.6 1.7"/><path d="M8.2 14a7 7 0 013.8-1.4"/><circle cx="12" cy="19" r="1.2" fill="currentColor" stroke="none"/></svg>`,
-  };
+  /* ── мок-адаптер для просмотра в браузере ─────────────────────────────── */
 
-  /* ── адаптер: единственное место, где живёт «ядро» ───────────────────── */
-  const mockAdapter = (() => {
+  const mock = (() => {
     const servers = [
-      { id: "de-fra", cc: "DE", country: "Германия", city: "Frankfurt", ping: 24, load: 12, fav: true },
-      { id: "nl-ams", cc: "NL", country: "Нидерланды", city: "Amsterdam", ping: 38, load: 34, fav: true },
-      { id: "fi-hel", cc: "FI", country: "Финляндия", city: "Helsinki", ping: 45, load: 21, fav: false },
-      { id: "se-sto", cc: "SE", country: "Швеция", city: "Stockholm", ping: 52, load: 8, fav: false },
-      { id: "pl-waw", cc: "PL", country: "Польша", city: "Warsaw", ping: 61, load: 47, fav: false },
-      { id: "kz-ala", cc: "KZ", country: "Казахстан", city: "Almaty", ping: 96, load: 39, fav: false },
-      { id: "tr-ist", cc: "TR", country: "Турция", city: "Istanbul", ping: 78, load: 63, fav: false },
-      { id: "us-nyc", cc: "US", country: "США", city: "New York", ping: 142, load: 55, fav: false },
+      { id: "es:443", cc: "ES", country: "Испания", city: "185.42.113.7", ping: 84, load: 0, fav: false },
+      { id: "nl:443", cc: "NL", country: "Нидерланды", city: "185.42.113.9", ping: 37, load: 0, fav: false }
     ];
-
     const snap = {
-      state: "disconnected", // disconnected | connecting | connected | error | no-internet
-      serverId: "de-fra",
-      traffic: { up: 1.24, down: 8.6, uptime: 0 },
-      settings: {
-        protocol: "VLESS + Reality",
-        killSwitch: true,
-        split: true,
-        autostart: false,
-        tun: false,
-        dns: "Через туннель",
-          },
-      series: Array.from({ length: 40 }, (_, i) => 26 + Math.round(16 * Math.sin(i / 3.1) + 9 * Math.sin(i / 1.3) + (i % 5))),
-      apps: [
-        { name: "Google Chrome", path: "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe", on: true },
-        { name: "Telegram", path: "C:\\Users\\me\\AppData\\Roaming\\Telegram Desktop\\Telegram.exe", on: true },
-      ],
-      error: "",
+      state: "disconnected",
+      serverId: "es:443",
+      onboarded: false,
+      traffic: { up: 0, down: 0, uptime: 0 },
+      settings: { killSwitch: true, split: true, autostart: false, tun: false, dns: "Через туннель" },
+      keyMsg: "", srvStatus: "", srvBusy: false, srvHost: "", srvUser: "", srvKeys: [], apps: [], error: ""
     };
-
-    const listeners = new Set();
+    const subs = new Set();
     let timer = null;
-    const emit = () => listeners.forEach((fn) => fn(structuredClone(snap)));
-
-    const api = {
-      subscribe(fn) { listeners.add(fn); fn(structuredClone(snap)); return () => listeners.delete(fn); },
-      async connect() {
-        snap.state = "connecting"; snap.error = ""; emit();
-        await new Promise((r) => setTimeout(r, 1500));
-        snap.state = "connected";
-        snap.traffic = { up: 0.02, down: 0.14, uptime: 0 };
-        clearInterval(timer);
-        timer = setInterval(() => {
-          if (snap.state !== "connected") return;
-          snap.traffic.uptime += 1;
-          snap.traffic.down = +(snap.traffic.down + 0.02 + Math.random() * 0.05).toFixed(2);
-          snap.traffic.up = +(snap.traffic.up + 0.004 + Math.random() * 0.01).toFixed(2);
-          snap.series = snap.series.slice(1).concat([26 + Math.round(18 * Math.sin(Date.now() / 4000) + Math.random() * 10)]);
-          emit();
-        }, 1000);
-        emit();
+    const emit = () => subs.forEach((f) => f(JSON.parse(JSON.stringify(snap))));
+    return {
+      subscribe(fn) { subs.add(fn); fn(JSON.parse(JSON.stringify(snap))); return () => subs.delete(fn); },
+      serverList: () => servers,
+      connect() {
+        snap.state = "connecting"; emit();
+        setTimeout(() => {
+          snap.state = "connected"; snap.traffic.uptime = 0; emit();
+          clearInterval(timer);
+          timer = setInterval(() => { snap.traffic.uptime += 1; emit(); }, 1000);
+        }, 2200);
       },
-      async disconnect() {
-        clearInterval(timer);
-        snap.state = "disconnected"; snap.traffic.uptime = 0; emit();
-      },
-      selectServer(id) { snap.serverId = id; if (snap.state === "connected") { snap.state = "connecting"; emit(); setTimeout(() => { snap.state = "connected"; emit(); }, 900); } else emit(); },
-      toggleFav(id) { const s = servers.find((x) => x.id === id); if (s) s.fav = !s.fav; emit(); },
-      setSetting(key, value) { snap.settings[key] = value; emit(); },
-      serverList() { return structuredClone(servers); },
-      appAdd() { snap.apps.push({ name: "Новое приложение", path: "C:\\demo\\app.exe", on: true }); emit(); },
-      appToggle(path) { const a = snap.apps.find((x) => x.path === path); if (a) a.on = !a.on; emit(); },
-      appRun(name) { alert("В макете приложение «" + name + "» запускается через прокси"); },
-      appDel(path) { snap.apps = snap.apps.filter((x) => x.path !== path); emit(); },
-      srvInstall() { snap.srvStatus = "Макет: сервер не ставится"; emit(); },
-      srvKeys() { snap.srvStatus = "Макет: ключи не читаются"; emit(); },
-      srvIssue() { snap.srvStatus = "Макет: ключ не выдаётся"; emit(); },
-      srvRevoke() { snap.srvStatus = "Макет: ключ не отзывается"; emit(); },
-      srvConnect() { snap.srvStatus = "Макет: SSH недоступен"; emit(); },
-      keyPaste() { snap.keyMsg = "Макет: ключ из буфера не читается"; emit(); },
-      keyAdd() { snap.keyMsg = "Макет: ключ не добавляется"; emit(); },
+      disconnect() { clearInterval(timer); snap.state = "disconnected"; snap.traffic.uptime = 0; emit(); },
+      selectServer(id) { snap.serverId = id; emit(); },
+      setSetting(k, v) { snap.settings[k] = v; emit(); },
+      onboard() { snap.onboarded = true; emit(); },
       refresh() { emit(); },
+      keyPaste() { snap.keyMsg = "Макет: ключ из буфера не читается"; emit(); },
+      keyAdd() {},
+      srvConnect() { snap.srvStatus = "Макет: SSH недоступен"; emit(); },
+      srvInstall() {}, srvKeys() {}, srvIssue() {}, srvRevoke() {}
     };
-    return api;
   })();
 
-  let adapter = mockAdapter;
+  let adapter = mock;
 
-  /* ── компоненты ──────────────────────────────────────────────────────── */
-  const comp = {
-    badge(s) {
-      const map = {
-        connected: ["connected", "Подключено"],
-        connecting: ["connecting", "Подключение"],
-        disconnected: ["disconnected", "Не подключено"],
-        error: ["error", "Ошибка"],
-        "no-internet": ["error", "Нет сети"],
-      };
-      const [st, text] = map[s] || map.disconnected;
-      return `<span class="badge" data-state="${st}" role="status" aria-live="polite"><span class="dot" aria-hidden="true"></span>${text}</span>`;
-    },
+  /* ── мелкие части ─────────────────────────────────────────────────────── */
 
-    toggle(on, action, label, disabled = false) {
-      return `<button class="toggle" role="switch" aria-checked="${on}" aria-label="${esc(label)}"
-        ${disabled ? 'aria-disabled="true" tabindex="-1"' : ""} data-action="${action}"></button>`;
-    },
-
-    ping(ms) {
-      if (!ms) return `<span class="ping num faint">—</span>`;
-      const cls = ms < 80 ? "good" : ms < 160 ? "mid" : "bad";
-      return `<span class="ping num ${cls}">${ms} ms</span>`;
-    },
-
-    serverRow(s, selected) {
-      return `
-      <div class="row ${selected ? "selected" : ""}" data-server="${s.id}" role="button" tabindex="0"
-           aria-label="${esc(s.country + ", " + s.city + ", " + s.ping + " мс")}">
-        <span class="flag" aria-hidden="true">${s.cc}</span>
-        <span class="main">
-          <span class="name">${esc(s.country)} <span class="faint" style="font-weight:var(--w-regular)">· ${esc(s.city)}</span></span>
-          <span class="sub">${s.load < 40 ? "Свободен" : s.load < 70 ? "Умеренная загрузка" : "Высокая загрузка"} · ${s.load}%</span>
-        </span>
-        <span class="side">
-          <span class="loadpct" title="Загрузка сервера">${s.load}%</span>
-          ${comp.ping(s.ping)}
-          <button class="star" data-fav="${s.id}" aria-pressed="${s.fav}" aria-label="В избранное: ${esc(s.country)}">
-            ${icon.star(s.fav)}
-          </button>
-        </span>
-      </div>`;
-    },
-
-    tile(s, active, connected) {
-      const load = s.load > 0 ? (s.load < 40 ? " · свободен" : s.load < 70 ? " · умеренно" : " · загружен") : "";
-      return `
-      <button class="tile" data-server="${s.id}" aria-pressed="${active}"
-              aria-label="${esc(s.country + " · " + s.city + " · " + s.ping + " мс" + (active && connected ? " · подключено" : ""))}">
-        <span class="tile-top">
-          <span class="flag" aria-hidden="true">${s.cc}</span>
-          ${comp.ping(s.ping)}
-        </span>
-        <span class="tile-name">${active && connected ? `<span class="tile-live" aria-hidden="true"></span>` : ""}${esc(s.country)}</span>
-        <span class="tile-sub">${esc(s.city)}${load}</span>
-        <span class="star tile-star" data-fav="${s.id}" role="button" aria-pressed="${s.fav}"
-              aria-label="В избранное: ${esc(s.country)}">${icon.star(s.fav)}</span>
-      </button>`;
-    },
-
-    sparkline(series) {
-      const w = 320, h = 68;
-      if (!series || series.length < 2) series = [0, 0];
-      const max = Math.max(...series), min = Math.min(...series);
-      const norm = (v) => h - ((v - min) / (max - min || 1)) * (h - 10) - 5;
-      const pts = series.map((v, i) => [(i / (series.length - 1)) * w, norm(v)]);
-      const line = pts.map((p, i) => `${i ? "L" : "M"}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ");
-      const area = `${line} L${w},${h} L0,${h} Z`;
-      return `<svg class="chart" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" role="img" aria-label="График скорости">
-        <defs><linearGradient id="chartFill" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="var(--accent)" stop-opacity="0.35"/>
-          <stop offset="100%" stop-color="var(--accent)" stop-opacity="0"/>
-        </linearGradient></defs>
-        <path class="area" d="${area}"/>
-        <path class="line" d="${line}"/>
-        <circle class="dot" cx="${pts[pts.length - 1][0]}" cy="${pts[pts.length - 1][1]}" r="3"/>
-      </svg>`;
-    },
-
-    empty(title, desc, action = "") {
-      return `<div class="empty">
-        <div class="art">${icon.globe}</div>
-        <div class="t">${esc(title)}</div>
-        <div class="d">${esc(desc)}</div>
-        ${action}
-      </div>`;
-    },
-
-    skeletons(n = 4) {
-      return `<div class="list">${Array.from({ length: n }, () => `<div class="skeleton row-sk"></div>`).join("")}</div>`;
-    },
-
-    fmtClock(sec) {
-      const h = String(Math.floor(sec / 3600)).padStart(2, "0");
-      const m = String(Math.floor((sec % 3600) / 60)).padStart(2, "0");
-      const s = String(sec % 60).padStart(2, "0");
-      return `${h}:${m}:${s}`;
-    },
-
-    fmtGB(v) { return v.toFixed(2); },
+  const clock = (sec) => {
+    if (sec === null || sec === undefined) return "—";
+    if (sec === 0) return "0 с";
+    if (sec < 60) return sec + " с";
+    const m = Math.floor(sec / 60);
+    if (m < 60) return m + " мин";
+    return Math.floor(m / 60) + " ч " + (m % 60) + " мин";
   };
 
-  /* ── экраны ──────────────────────────────────────────────────────────── */
-  const views = {
-    home(snap, servers) {
-      const server = servers.find((x) => x.id === snap.serverId) || servers[0] || null;
-      const s = snap.state;
-      const connected = s === "connected";
-      const connecting = s === "connecting";
-      const err = s === "error";
-      const noNet = s === "no-internet";
+  const switchBtn = (on, action, label) =>
+    `<button type="button" class="switch" role="switch" aria-checked="${on}" aria-label="${esc(label)}" data-action="${action}">
+       <span class="track"><span class="knob"></span></span>
+     </button>`;
 
-      const title = connected ? `Подключено${server ? " · " + esc(server.country) : ""}`
-        : connecting ? "Подключаемся…"
-        : err ? "Не подключено — ошибка"
-        : noNet ? "Нет интернета"
-        : "Не подключено";
-      const sub = connected && server ? `${esc(server.city)} · ${server.ping} мс · ${comp.fmtClock(snap.traffic.uptime)}`
-        : connecting ? "проверяем TLS и маршрут"
-        : err ? esc(snap.error || "сервер не ответил, попробуй другой")
-        : noNet ? "сначала верни сеть — туннель не поднять"
-        : "нажми плитку сервера, чтобы подключиться";
+  const row = (title, value, extra = "") =>
+    `<div class="row"><span class="t">${esc(title)}</span>${extra || `<span class="v">${esc(value || "—")}</span>`}</div>`;
 
-      const tiles = servers.length
-        ? servers.map((x) => comp.tile(x, x.id === snap.serverId, connected)).join("")
-        : comp.empty("Нет ключей", "Добавь ключ veil:// в буфер и вставь его в приложении.",
-            `<button class="btn primary" data-action="add-key">＋ Добавить ключ</button>`);
+  /* ── экран: онбординг ─────────────────────────────────────────────────── */
 
+  const viewOnboarding = () => `
+    <section class="screen">
+      <h1 class="phrase">Приложение создаст VPN-подключение.</h1>
+      <div class="spacer"></div>
+      <button class="btn filled" data-action="onboard">Разрешить</button>
+    </section>`;
+
+  /* ── экран: главный ───────────────────────────────────────────────────── */
+
+  const viewMain = (snap, servers) => {
+    const active = servers.find((s) => s.id === snap.serverId) || servers[0] || null;
+    const c = country(active);
+    const st = snap.state;
+
+    const cityWord = c
+      ? `<button class="word" data-action="cities">${esc(c.in)}</button>`
+      : `<button class="word" data-action="cities">${esc(active ? active.country : "выбрать")}</button>`;
+
+    const phrase = {
+      disconnected: `<span class="fade">Интернет открыт.</span>`,
+      connecting: `<span class="fade">Подключаемся к&nbsp;${cityWord}…</span>`,
+      connected: `<span class="fade">Вы в<br>${cityWord}<span class="chev">▾</span></span>`,
+      reconnecting: `<span class="fade">Восстанавливаем связь…</span>`,
+      error: `<span class="fade">Не удалось подключиться.</span>`
+    }[st] || "";
+
+    const ip = active && /^\d+\.\d+\.\d+\.\d+$/.test(active.city || "") ? active.city : "—";
+    const facts = {
+      disconnected: active ? `Выбран: ${country(active) ? country(active).name : active.country}` : "Профилей нет",
+      connecting: "Рукопожатие",
+      connected: `${ip} · ${active && active.ping ? active.ping + " мс" : "—"} · ${clock(snap.traffic.uptime)}`,
+      reconnecting: "Повторное рукопожатие",
+      error: ""
+    }[st] || "";
+
+    const primary = {
+      disconnected: ["Подключиться", "filled"],
+      connecting: ["Отмена", "outline"],
+      connected: ["Отключиться", "outline"],
+      reconnecting: ["Отмена", "outline"],
+      error: ["Попробовать иначе", "danger"]
+    }[st] || ["Подключиться", "filled"];
+
+    const busy = st === "connecting" || st === "reconnecting";
+
+    return `
+    <section class="screen">
+      <h1 class="phrase" aria-live="polite">${phrase}</h1>
+      ${facts ? `<${st === "disconnected" ? 'button class="facts facts-btn" data-action="cities" aria-label="Выбрать сервер"' : 'div class="facts"'}>${st === "connected" ? '<span class="dot" aria-hidden="true"></span>' : ""}<span>${esc(facts)}</span>${st === "disconnected" ? '<span class="chev">▾</span>' : ""}</${st === "disconnected" ? "button" : "div"}>` : ""}
+      ${st === "error" ? `<p class="reason">${esc(snap.error || "Провайдер блокирует этот порт")}</p>` : ""}
+
+      <div class="spacer"></div>
+      <button class="btn ${primary[1]}" data-action="primary" ${busy ? "" : ""}>${primary[0]}</button>
+      <button class="link-row" data-action="settings">Настройки <span class="arrow">›</span></button>
+    </section>`;
+  };
+
+  /* ── шторка: выбор сервера ────────────────────────────────────────────── */
+
+  const viewCities = (snap, servers) => {
+    const q = S.query.trim().toLowerCase();
+    const list = servers.filter((s) => !q || `${s.country} ${s.cc}`.toLowerCase().includes(q));
+
+    const item = (s) => {
+      const c = country(s);
+      const isActive = s.id === snap.serverId;
       return `
-      <section class="home">
-        <div class="status-strip" data-state="${err ? "error" : connecting ? "connecting" : connected ? "connected" : "idle"}">
-          <span class="strip-dot" aria-hidden="true"></span>
-          <span class="strip-text">
-            <span class="strip-title">${title}</span>
-            <span class="strip-sub">${sub}</span>
+        <button class="city" data-pick="${esc(s.id)}" ${isActive ? 'aria-current="true"' : ""}>
+          <span class="mark">${isActive ? "<i></i>" : ""}</span>
+          <span>
+            <span class="name">${esc(c ? c.name : s.country)}</span>
+            <span class="country">${esc(/^\d+\./.test(s.city) ? s.city : s.country)}</span>
           </span>
-          ${connected ? `<button class="btn ghost strip-btn" data-action="toggle">Отключить</button>` : ""}
+          <span class="ping">${s.ping ? s.ping : "—"}</span>
+        </button>`;
+    };
+
+    return `
+      <div class="scrim" data-action="close-sheet"></div>
+      <div class="sheet" role="dialog" aria-label="Выбор сервера">
+        <div class="head">
+          <input class="search" id="citySearch" type="search" placeholder="Поиск" value="${esc(S.query)}" aria-label="Поиск сервера">
         </div>
-        <div class="tiles">${tiles}</div>
-      </section>`;
-    },
-
-    add(snap) {
-      const msg = snap.keyMsg || "";
-      const err = /нет ключа|не распознан|не поддерживаются|уже добавлен/i.test(msg);
-      return `
-      <section class="add">
-        <div class="add-head">
-          <div class="title">Соединение</div>
-          <div class="faint">Вставь ключ <b>veil://</b> — он появится на главной плиткой.</div>
+        <div class="body">
+          ${list.length ? list.map(item).join("") : `<p class="msg">Ничего не нашлось</p>`}
         </div>
-
-        <div class="paste-row">
-          <input id="keyInput" type="text" placeholder="Вставить ключ" spellcheck="false"
-                 aria-label="Ключ подключения" autocomplete="off">
-          <button class="btn primary" data-action="key-paste">Вставить</button>
-        </div>
-
-        <div class="paste-msg ${err ? "is-error" : msg ? "is-ok" : ""}" role="status" aria-live="polite">${esc(msg)}</div>
-
-        <div class="add-hint">
-          <div class="caps">Как это работает</div>
-          <div class="faint">
-            Скопируй ключ (он начинается с <code>veil://</code>) и нажми «Вставить».
-            Можно вставить ключ в поле вручную и нажать Enter — результат тот же.
-            Ключи по IP-адресу не принимаются: нужен домен, иначе маскировка под TLS ломается.
-          </div>
-        </div>
-      </section>`;
-    },
-
-    server(snap) {
-      const keys = snap.srvKeys || [];
-      const host = snap.srvHost || "";
-      const busy = !!snap.srvBusy;
-      const status = snap.srvStatus || "";
-
-      const field = (id, label, ph, val, type) => `
-        <label class="field">
-          <span class="caps">${esc(label)}</span>
-          <input id="${id}" type="${type || "text"}" placeholder="${esc(ph)}" value="${esc(val || "")}"
-                 spellcheck="false" autocomplete="off" ${busy ? "disabled" : ""}>
-        </label>`;
-
-      const form = `
-        <div class="card srv-form">
-          <div class="srv-hint faint">
-            Заполни доступ по SSH — приложение само поставит veil на сервер,
-            выпустит сертификат и добавит ключ на главную.
-          </div>
-          <div class="srv-grid">
-            ${field("srvHost", "Сервер", "203.0.113.10 или veil.example.com", host)}
-            ${field("srvPort", "Порт SSH", "22", "22", "number")}
-            ${field("srvUser", "Пользователь", "root", snap.srvUser || "root")}
-            ${field("srvPass", "Пароль", "пароль root", "", "password")}
-            ${field("srvKey", "Или путь к ключу", "C:\\Users\\you\\.ssh\\id_ed25519", "")}
-            ${field("srvDomain", "Домен (необязательно)", "veil.example.com — для Let's Encrypt", "")}
-          </div>
-          <div class="srv-buttons">
-            <button class="btn primary" data-action="srv-install" ${busy ? "disabled" : ""}>
-              ${busy ? "Устанавливаю…" : "Установить сервер"}
-            </button>
-            <button class="btn" data-action="srv-connect" ${busy ? "disabled" : ""}>Только подключиться</button>
-          </div>
-          <div class="srv-note faint">
-            Без домена сервер получит самоподписанный сертификат, а клиент будет
-            проверять его по отпечатку — шифрование то же, маскировка слабее.
-          </div>
-        </div>`;
-
-      const keysBlock = host ? `
-        <div class="card">
-          <div class="srv-head">
-            <span class="caps">Ключи на сервере</span>
-            <span class="faint" style="font-size:var(--fs-12)">${esc(host)} · ${keys.length}</span>
-          </div>
-          ${keys.length
-            ? `<div class="list">${keys.map((k) => `
-                <div class="row" style="min-height:52px" data-key="${esc(k)}">
-                  <span class="flag" aria-hidden="true">${esc(k.slice(0, 2).toUpperCase())}</span>
-                  <span class="main"><span class="name">${esc(k)}</span><span class="sub">персональный ключ</span></span>
-                  <span class="side"><button class="btn ghost" style="min-height:34px" data-action="srv-revoke" data-name="${esc(k)}">Отозвать</button></span>
-                </div>`).join("")}</div>`
-            : `<div class="faint" style="font-size:var(--fs-13)">пока один — тот, что выдан при установке</div>`}
-          <div class="srv-actions">
-            <input id="srvNewKey" type="text" placeholder="имя: мама, друг-петя" ${busy ? "disabled" : ""}>
-            <button class="btn" data-action="srv-issue" ${busy ? "disabled" : ""}>Выдать ключ</button>
-            <button class="btn ghost" data-action="srv-refresh" ${busy ? "disabled" : ""}>Обновить</button>
-          </div>
-        </div>` : "";
-
-      return `
-      <section class="add">
-        <div class="add-head">
-          <div class="title">Свой сервер</div>
-          <div class="faint">Один раз ввести доступ по SSH — и сервер настраивается сам.</div>
-        </div>
-        ${form}
-        ${keysBlock}
-        <div class="paste-msg ${/Ошибка/i.test(status) ? "is-error" : status ? "is-ok" : ""}" role="status" aria-live="polite">${esc(status)}</div>
-      </section>`;
-    },
-
-    settings(snap) {
-      const s = snap.settings;
-      const row = (title, sub, control) => `
-        <div class="setting">
-          <div class="label"><span>${esc(title)}</span>${sub ? `<span class="sub">${esc(sub)}</span>` : ""}</div>
-          ${control}
-        </div>`;
-      const apps = snap.apps || [];
-
-      return `
-      <section style="display:grid;gap:var(--s-4)">
-        <div class="group">
-          <div class="caps group-title">Соединение</div>
-          <div class="card" style="padding:0">
-            ${row("Протокол", "veil · TLS 1.3, маскировка под браузер, fallback на реальный сайт", `<span class="faint num" style="font-size:var(--fs-13)">veil/1</span>`)}
-            ${row("Kill switch", "блокировать трафик при обрыве", comp.toggle(s.killSwitch, "set-kill", "Kill switch"))}
-            ${row("Автозапуск", "подключаться при старте системы", comp.toggle(s.autostart, "set-autostart", "Автозапуск"))}
-            ${row("DNS", "как резолвить имена", `
-              <select data-setting="dns" aria-label="DNS">
-                ${["Через туннель", "Системный", "1.1.1.1", "9.9.9.9"].map((d) => `<option ${d === s.dns ? "selected" : ""}>${d}</option>`).join("")}
-              </select>`)}
-          </div>
-        </div>
-
-        <div class="group">
-          <div class="caps group-title">Маршрутизация</div>
-          <div class="card" style="padding:0">
-            ${row("RU-сайты напрямую", "яндекс, госуслуги, банки — без туннеля", comp.toggle(s.split, "set-split", "RU-сайты напрямую"))}
-            ${row("TUN-режим", s.tun === undefined ? "нужен перезапуск от администратора" : "весь трафик ОС, включая игры и UDP", comp.toggle(!!s.tun, "set-tun", "TUN-режим"))}
-            <div class="setting">
-              <div class="label"><span>Список исключений</span><span class="sub">.ru · .рф · 7410 российских подсетей</span></div>
-              <button class="btn ghost" style="min-height:36px" data-action="sheet-rules">Изменить</button>
-            </div>
-          </div>
-        </div>
-
-        <div class="group">
-          <div class="caps group-title">Приложения через туннель</div>
-          <div class="card" style="padding:0">
-            ${row("Выборочный режим", "только выбранные .exe, остальная система — мимо", `<button class="btn ghost" style="min-height:36px" data-action="app-add">Добавить</button>`)}
-            ${apps.length
-              ? apps.map((a) => `
-                <div class="setting" data-app="${esc(a.path)}">
-                  <div class="label"><span>${esc(a.name)}</span><span class="sub" title="${esc(a.path)}">${esc(a.path)}</span></div>
-                  <span style="display:flex;align-items:center;gap:var(--s-2)">
-                    <button class="btn ghost" style="min-height:36px" data-action="app-run" data-path="${esc(a.path)}" data-name="${esc(a.name)}">Запустить</button>
-                    ${comp.toggle(a.on, "app-toggle", "Через туннель: " + a.name)}
-                    <button class="star" data-app-del="${esc(a.path)}" aria-label="Удалить ${esc(a.name)}">×</button>
-                  </span>
-                </div>`).join("")
-              : `<div class="setting"><div class="label"><span class="faint" style="font-size:var(--fs-13)">Список пуст — добавь .exe, чтобы запускать его через туннель</span></div></div>`}
-          </div>
-        </div>
-
-        <div class="group">
-          <div class="caps group-title">Данные</div>
-          <div class="card" style="padding:0">
-            ${row("Ключи", "ключи veil:// из буфера", `<button class="btn ghost" style="min-height:36px" data-action="add-key">Добавить</button>`)}
-            ${row("Логи", "последние 200 строк", `<button class="btn ghost" style="min-height:36px" data-action="sheet-logs">Открыть</button>`)}
-            ${row("Версия", "0.9.1 · Go 1.27.4", `<span class="faint num" style="font-size:var(--fs-13)">обновлено</span>`)}
-          </div>
-        </div>
-      </section>`;
-    },
+      </div>`;
   };
 
-  /* ── рендер ──────────────────────────────────────────────────────────── */
-  let lastHtml = "";
+  /* ── экран: настройки ─────────────────────────────────────────────────── */
+
+  const viewSettings = (snap) => {
+    const s = snap.settings;
+    return `
+    <section class="screen compact">
+      <button class="back" data-action="home">‹ Назад</button>
+
+      <div class="group">
+        <div class="caps">Соединение</div>
+        ${row("Протокол", "veil · TLS 1.3")}
+        <div class="row"><span class="t">Автоподключение</span>${switchBtn(s.autostart, "set-autostart", "Автоподключение")}</div>
+      </div>
+
+      <div class="group">
+        <div class="caps">Безопасность</div>
+        <div class="row"><span class="t">Блокировать интернет при обрыве</span>${switchBtn(s.killSwitch, "set-kill", "Блокировать интернет при обрыве")}</div>
+        <p class="note">Трафик встанет, пока туннель не восстановится</p>
+        <div class="row"><span class="t">RU-сайты напрямую</span>${switchBtn(s.split, "set-split", "RU-сайты напрямую")}</div>
+      </div>
+
+      <div class="group">
+        <div class="caps">Маршрутизация</div>
+        <div class="row"><span class="t">TUN-режим</span>${switchBtn(!!s.tun, "set-tun", "TUN-режим")}</div>
+        <div class="row">
+          <span class="t">DNS</span>
+          <select class="plain" data-setting="dns" aria-label="DNS">
+            ${["Через туннель", "Системный", "1.1.1.1", "9.9.9.9"].map((d) => `<option ${d === s.dns ? "selected" : ""}>${d}</option>`).join("")}
+          </select>
+        </div>
+      </div>
+
+      <div class="group">
+        <div class="caps">Профиль</div>
+        <div class="row clickable" data-action="keys"><span class="t">Ключ</span><span class="v">›</span></div>
+        <div class="row clickable" data-action="server"><span class="t">Свой сервер</span><span class="v">›</span></div>
+        <div class="row clickable" data-action="cities"><span class="t">Сервер</span><span class="v">›</span></div>
+      </div>
+
+      <div class="group">
+        <div class="caps">Приложение</div>
+        ${row("Тема", "Светлая")}
+        ${row("Язык", "Русский")}
+        <div class="row clickable" data-action="logs"><span class="t">Журнал</span><span class="v">Открыть</span></div>
+      </div>
+    </section>`;
+  };
+
+  /* ── экран: ключ ──────────────────────────────────────────────────────── */
+
+  const viewKeys = (snap) => `
+    <section class="screen compact">
+      <button class="back" data-action="settings">‹ Назад</button>
+      <div class="group">
+        <div class="caps">Соединение</div>
+        <label class="field">
+          <span class="caps">Ключ</span>
+          <input id="keyInput" type="text" placeholder="veil://…" spellcheck="false" autocomplete="off" aria-label="Ключ">
+        </label>
+        <div class="actions">
+          <button class="btn filled" data-action="key-paste">Вставить из буфера</button>
+          <button class="btn outline" data-action="key-add">Добавить ключ из поля</button>
+        </div>
+        <p class="msg ${/нет ключа|не распознан|не поддерживаются|уже добавлен|ошиб/i.test(snap.keyMsg || "") ? "err" : ""}">${esc(snap.keyMsg || "")}</p>
+      </div>
+    </section>`;
+
+  /* ── экран: свой сервер ───────────────────────────────────────────────── */
+
+  const viewServer = (snap) => {
+    const busy = !!snap.srvBusy;
+    const keys = snap.srvKeys || [];
+    const field = (id, label, ph, type) => `
+      <label class="field">
+        <span class="caps">${esc(label)}</span>
+        <input id="${id}" type="${type || "text"}" placeholder="${esc(ph)}" spellcheck="false" autocomplete="off" ${busy ? "disabled" : ""}>
+      </label>`;
+
+    return `
+    <section class="screen compact">
+      <button class="back" data-action="settings">‹ Назад</button>
+
+      <div class="group">
+        <div class="caps">Сервер по SSH</div>
+        ${field("srvHost", "Сервер", "203.0.113.10 или домен")}
+        ${field("srvPort", "Порт", "22", "number")}
+        ${field("srvUser", "Пользователь", "root")}
+        ${field("srvPass", "Пароль", "пароль или путь к ключу", "password")}
+        ${field("srvKey", "Путь к ключу", "C:\\Users\\you\\.ssh\\id_ed25519")}
+        ${field("srvDomain", "Домен для сертификата", "необязательно")}
+        <div class="actions">
+          <button class="btn filled" data-action="srv-install" ${busy ? "disabled" : ""}>Установить сервер</button>
+          <button class="btn outline" data-action="srv-connect" ${busy ? "disabled" : ""}>Только подключиться</button>
+        </div>
+        <p class="msg ${/ошиб|не принял|не удалось/i.test(snap.srvStatus || "") ? "err" : ""}">${esc(snap.srvStatus || "")}</p>
+      </div>
+
+      <div class="group">
+        <div class="caps">Ключи</div>
+        ${keys.length
+          ? keys.map((k) => `<div class="row"><span class="t">${esc(k)}</span><button class="btn outline" style="height:36px;width:auto;padding:0 12px;font-size:13px" data-action="srv-revoke" data-name="${esc(k)}">Отозвать</button></div>`).join("")
+          : `<p class="msg">Пока не читал список</p>`}
+        <label class="field">
+          <span class="caps">Новый ключ</span>
+          <input id="srvNewKey" type="text" placeholder="имя: мама, друг" ${busy ? "disabled" : ""}>
+        </label>
+        <div class="actions">
+          <button class="btn outline" data-action="srv-issue" ${busy ? "disabled" : ""}>Выдать ключ</button>
+        </div>
+      </div>
+    </section>`;
+  };
+
+  /* ── шторка: журнал ───────────────────────────────────────────────────── */
+
+  const viewLogs = (snap) => {
+    const lines = [
+      `состояние: ${snap.state}`,
+      `сервер: ${snap.serverId || "—"}`,
+      `пинг: ${snap.settings ? "" : ""}${snap.traffic ? snap.traffic.uptime + " с в сессии" : "—"}`,
+      snap.error ? `ошибка: ${snap.error}` : "",
+      snap.keyMsg ? `ключи: ${snap.keyMsg}` : "",
+      snap.srvStatus ? `сервер: ${snap.srvStatus}` : ""
+    ].filter(Boolean);
+    return `
+      <div class="scrim" data-action="close-sheet"></div>
+      <div class="sheet" role="dialog" aria-label="Журнал">
+        <div class="head"><div class="caps">Журнал</div></div>
+        <div class="body"><pre class="mono-block">${esc(lines.join("\n"))}</pre></div>
+      </div>`;
+  };
+
+  /* ── рендер ───────────────────────────────────────────────────────────── */
 
   function render() {
-    const snap = state.snapshot;
+    const snap = S.snap;
     if (!snap) return;
-    const servers = adapter.serverList();
-
-    document.documentElement.dataset.theme = "dark";
-    const badgeHost = $("#topBadgeHost");
-    if (badgeHost) badgeHost.innerHTML = comp.badge(snap.state);
-
+    const servers = adapter.serverList() || [];
     const view = $("#view");
-    const html = state.tab === "settings" ? views.settings(snap)
-      : state.tab === "add" ? views.add(snap)
-      : state.tab === "server" ? views.server(snap)
-      : views.home(snap, servers);
 
-    const tabKey = state.tab;
-    document.querySelectorAll(".tab").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.tab === tabKey)));
+    let html;
+    if (!snap.onboarded) html = viewOnboarding();
+    else if (S.screen === "settings") html = viewSettings(snap);
+    else if (S.screen === "keys") html = viewKeys(snap);
+    else if (S.screen === "server") html = viewServer(snap);
+    else html = viewMain(snap, servers);
 
-    // Снапшот приходит раз в секунду: перерисовываем DOM только при реальном
-    // изменении вида и переносим введённый текст с фокусом, иначе поля стираются.
-    if (html === lastHtml) return;
+    const overlay = $("#overlay");
+    const overlayHtml = S.sheet === "cities" ? viewCities(snap, servers)
+      : S.sheet === "logs" ? viewLogs(snap)
+      : "";
 
-    const active = document.activeElement;
-    const keepFocused = active && active.id ? active.id : "";
-    const keep = {};
-    view.querySelectorAll("input, select").forEach((el) => {
-      if (!el.id) return;
-      keep[el.id] = { value: el.value, start: el.selectionStart, end: el.selectionEnd };
-    });
+    const key = S.screen + "|" + snap.state + "|" + snap.onboarded + "|" + S.sheet;
+    if (html !== S.last || key !== S.lastKey) {
+      // перенос введённого в поля: снапшот приходит раз в секунду
+      const active = document.activeElement;
+      const focused = active && active.id ? active.id : "";
+      const keep = {};
+      document.querySelectorAll("#view input, #view select, #overlay input").forEach((el) => {
+        if (el.id) keep[el.id] = el.value;
+      });
 
-    view.innerHTML = html;
-    lastHtml = html;
+      view.innerHTML = html;
+      overlay.innerHTML = overlayHtml;
 
-    Object.keys(keep).forEach((id) => {
-      const el = view.querySelector("#" + id);
-      if (el) el.value = keep[id].value;
-    });
-    if (keepFocused) {
-      const el = view.querySelector("#" + keepFocused);
-      if (el) {
-        el.focus();
-        const k = keep[keepFocused];
-        try { if (k && k.start !== null) el.setSelectionRange(k.start, k.end); } catch (e) {}
+      Object.keys(keep).forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.value = keep[id];
+      });
+      if (focused) {
+        const el = document.getElementById(focused);
+        if (el) { el.focus(); try { el.setSelectionRange(el.value.length, el.value.length); } catch (e) {} }
       }
+      S.last = html;
+      S.lastKey = key;
     }
   }
 
-  function decorateHero() {
-    const ring = document.querySelector(".donut .ring-pulse");
-    if (ring) ring.style.opacity = "";
-  }
+  /* ── действия ─────────────────────────────────────────────────────────── */
 
-  /* ── действия ────────────────────────────────────────────────────────── */
-  document.addEventListener("click", async (e) => {
-    const tab = e.target.closest(".tab");
-    if (tab) { state.tab = tab.dataset.tab; lastHtml = ""; render(); return; }
+  const go = (screen) => { S.screen = screen; S.last = ""; render(); };
+  const openSheet = (name) => { S.sheet = name; S.last = ""; render(); };
+  const closeSheet = () => { S.sheet = ""; S.last = ""; render(); };
 
-    const appDel = e.target.closest("[data-app-del]");
-    if (appDel) { e.stopPropagation(); adapter.appDel(appDel.dataset.appDel); return; }
-
-    const appToggle = e.target.closest('[data-action="app-toggle"]');
-    if (appToggle) {
-      const box = appToggle.closest("[data-app]");
-      adapter.appToggle(box ? box.dataset.app : "");
+  document.addEventListener("click", (e) => {
+    const pick = e.target.closest("[data-pick]");
+    if (pick) {
+      const id = pick.dataset.pick;
+      adapter.selectServer(id);
+      closeSheet();
+      if (S.snap.state !== "connected") adapter.connect();
+      else adapter.disconnect(), setTimeout(() => adapter.connect(), 120);
       return;
     }
 
-    const fav = e.target.closest("[data-fav]");
-    if (fav) { e.stopPropagation(); adapter.toggleFav(fav.dataset.fav); return; }
+    const el = e.target.closest("[data-action]");
+    if (!el) return;
+    const a = el.dataset.action;
+    const snap = S.snap;
 
-    // плитка сервера: другой — переключаемся, тот же и уже подключено — отключаем
-    const tile = e.target.closest("[data-server]");
-    if (tile && !e.target.closest("[data-fav]")) {
-      const snap = state.snapshot;
-      const id = tile.dataset.server;
-      if (snap.state === "connecting") return;
-      if (snap.state === "connected" && snap.serverId === id) { await adapter.disconnect(); return; }
-      if (snap.serverId !== id) adapter.selectServer(id);
-      if (state.snapshot.state !== "connected") await adapter.connect();
+    if (a === "onboard") return adapter.onboard();
+    if (a === "primary") {
+      if (snap.state === "connected" || snap.state === "connecting" || snap.state === "reconnecting") adapter.disconnect();
+      else adapter.connect();
+      return;
+    }
+    if (a === "cities") return openSheet("cities");
+    if (a === "close-sheet") return closeSheet();
+    if (a === "settings") return go("settings");
+    if (a === "home") return go("main");
+    if (a === "keys") return go("keys");
+    if (a === "server") return go("server");
+    if (a === "logs") return openSheet("logs");
+
+    if (a === "set-kill") return adapter.setSetting("killSwitch", !snap.settings.killSwitch);
+    if (a === "set-split") return adapter.setSetting("split", !snap.settings.split);
+    if (a === "set-autostart") return adapter.setSetting("autostart", !snap.settings.autostart);
+    if (a === "set-tun") return adapter.setSetting("tun", !snap.settings.tun);
+
+    if (a === "key-paste") return adapter.keyPaste();
+    if (a === "key-add") {
+      const input = $("#keyInput");
+      const v = input ? input.value.trim() : "";
+      if (v) adapter.keyAdd(v);
       return;
     }
 
-    const action = e.target.closest("[data-action]");
-    if (!action) return;
-    const a = action.dataset.action;
-    const snap = state.snapshot;
-
-    if (a === "toggle") {
-      if (snap.state === "connected") await adapter.disconnect();
-      else if (snap.state !== "connecting") await adapter.connect();
-    } else if (a === "set-kill") adapter.setSetting("killSwitch", !snap.settings.killSwitch);
-    else if (a === "set-autostart") adapter.setSetting("autostart", !snap.settings.autostart);
-    else if (a === "set-split") adapter.setSetting("split", !snap.settings.split);
-    else if (a === "set-tun") adapter.setSetting("tun", !snap.settings.tun);
-    else if (a === "add-key") { state.tab = "add"; render(); }
-    else if (a === "key-paste") adapter.keyPaste();
-    else if (a === "srv-install") {
-      const root = action.closest("section");
-      const val = (id) => { const el = root.querySelector("#" + id); return el ? el.value.trim() : ""; };
-      adapter.srvInstall({ host: val("srvHost"), port: val("srvPort") || "22", user: val("srvUser") || "root",
-                           pass: val("srvPass"), keyfile: val("srvKey"), domain: val("srvDomain") });
+    if (a === "srv-install" || a === "srv-connect") {
+      const val = (id) => { const el = document.getElementById(id); return el ? el.value.trim() : ""; };
+      const cfg = {
+        host: val("srvHost"), port: val("srvPort") || "22", user: val("srvUser") || "root",
+        pass: val("srvPass"), keyfile: val("srvKey"), domain: val("srvDomain")
+      };
+      if (!cfg.host) return;
+      if (a === "srv-install") adapter.srvInstall(cfg); else adapter.srvConnect(cfg);
+      return;
     }
-    else if (a === "srv-connect") {
-      const root = action.closest("section");
-      const val = (id) => { const el = root.querySelector("#" + id); return el ? el.value.trim() : ""; };
-      adapter.srvConnect({ host: val("srvHost"), port: val("srvPort") || "22", user: val("srvUser") || "root",
-                           pass: val("srvPass"), keyfile: val("srvKey") });
-    }
-    else if (a === "srv-issue") {
-      const root = action.closest("section");
-      const el = root.querySelector("#srvNewKey");
+    if (a === "srv-issue") {
+      const el = document.getElementById("srvNewKey");
       const name = el ? el.value.trim() : "";
-      if (name) adapter.srvIssue(name); else toast("Впиши имя, для кого ключ", "error");
+      if (name) adapter.srvIssue(name);
+      return;
     }
-    else if (a === "srv-revoke") adapter.srvRevoke(action.dataset.name || "");
-    else if (a === "srv-refresh") adapter.srvKeys();
-    else if (a === "app-add") adapter.appAdd();
-    else if (a === "app-run") adapter.appRun(action.dataset.path);
-    else if (a === "sheet-rules") openSheet("Исключения маршрутизации", rulesSheet());
-    else if (a === "sheet-logs") openSheet("Логи клиента", logsSheet());
-    else if (a === "toast") toast(action.dataset.msg || "Готово", "ok");
-    else if (a === "close-sheet") closeSheet();
+    if (a === "srv-revoke") return adapter.srvRevoke(el.dataset.name || "");
   });
 
   document.addEventListener("change", (e) => {
     const sel = e.target.closest("[data-setting]");
-    if (!sel) return;
-    const key = sel.dataset.setting;
-    adapter.setSetting(key, sel.value);
+    if (sel) adapter.setSetting(sel.dataset.setting, sel.value);
+  });
+
+  document.addEventListener("input", (e) => {
+    if (e.target.id === "citySearch") {
+      S.query = e.target.value;
+      const overlay = $("#overlay");
+      const pos = e.target.selectionStart;
+      overlay.innerHTML = viewCities(S.snap, adapter.serverList() || []);
+      const input = document.getElementById("citySearch");
+      if (input) { input.focus(); input.setSelectionRange(pos, pos); }
+    }
   });
 
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") closeSheet();
-    if (e.key === "Enter" && e.target && e.target.id === "keyInput") {
-      e.preventDefault();
-      const v = e.target.value.trim();
-      if (v) adapter.keyAdd(v);
+    if (e.key === "Escape") {
+      if (S.sheet) closeSheet();
+      else if (S.screen !== "main") go("main");
+      return;
     }
-    if (e.key === "Enter" || e.key === " ") {
-      const row = e.target.closest("[data-server]");
-      if (row) { e.preventDefault(); adapter.selectServer(row.dataset.server); }
+    if (e.key === "Enter" && e.target) {
+      if (e.target.id === "keyInput" && e.target.value.trim()) adapter.keyAdd(e.target.value.trim());
+      if (e.target.id === "srvNewKey" && e.target.value.trim()) adapter.srvIssue(e.target.value.trim());
     }
   });
 
-  /* ── шторки и тосты ──────────────────────────────────────────────────── */
-  function openSheet(title, html) {
-    const scrim = $("#scrim"), sheet = $("#sheet");
-    $("#sheetTitle").textContent = title;
-    $("#sheetBody").innerHTML = html + `<button class="btn" style="width:100%;margin-top:var(--s-3)" data-action="close-sheet">Закрыть</button>`;
-    scrim.hidden = false; sheet.hidden = false;
-    requestAnimationFrame(() => { document.body.dataset.overlay = "1"; });
-    sheet.querySelector("button, select, input")?.focus();
-  }
-  function closeSheet() {
-    delete document.body.dataset.overlay;
-    setTimeout(() => { $("#scrim").hidden = true; $("#sheet").hidden = true; }, 260);
-  }
-  $("#scrim").addEventListener("click", closeSheet);
+  /* ── запуск ───────────────────────────────────────────────────────────── */
 
-  function rulesSheet() {
-    return `<div class="list">
-      ${[["Домены", ".ru, .рф, .su — 12 записей"], ["Сайты", "yandex.ru, gosuslugi.ru, sber.ru, ozon.ru"], ["Подсети", "10.0.0.0/8, 192.168.0.0/16, 172.16.0.0/12"]]
-        .map(([k, v]) => `<div class="row" style="min-height:56px"><span class="main"><span class="name">${esc(k)}</span><span class="sub">${esc(v)}</span></span><span class="side"><button class="btn ghost" style="min-height:36px" data-action="toast" data-msg="Редактор списка откроется в следующей сборке">Изменить</button></span></div>`).join("")}
-    </div>`;
-  }
-
-  function logsSheet() {
-    const lines = [
-      "18:15:02 tls handshake ok (fp=firefox, tls1.3)",
-      "18:15:02 tunnel -> www.speedtest.net:443",
-      "18:15:04 direct -> www.gosuslugi.ru:443",
-      "18:15:07 tunnel -> api.ipify.org:443 (ES, 203.0.113.10)",
-      "18:15:11 keepalive ok · 24 ms",
-    ];
-    return `<pre class="card" style="margin:0;font-family:ui-monospace,Consolas,monospace;font-size:var(--fs-12);color:var(--text-2);white-space:pre-wrap">${esc(lines.join("\n"))}</pre>`;
-  }
-
-  function toast(text, kind = "ok") {
-    const host = $("#toasts");
-    const el = document.createElement("div");
-    el.className = "toast";
-    el.dataset.kind = kind;
-    el.textContent = text;
-    host.appendChild(el);
-    setTimeout(() => el.remove(), 2600);
-  }
-
-
-  /* ── демо-состояния (?demo=1&state=error) ────────────────────────────── */
-  function applyForcedState(snap) {
-    if (!state.forced) return snap;
-    const f = state.forced;
-    if (f === "disconnected") snap.state = "disconnected";
-    if (f === "connecting") snap.state = "connecting";
-    if (f === "connected") snap.state = "connected";
-    if (f === "error") { snap.state = "error"; snap.error = "Сервер отклонил TLS-рукопожатие"; }
-    if (f === "no-internet") snap.state = "no-internet";
-    if (f === "loading") state.loading = true;
-    if (f === "empty") state.forcedEmpty = true;
-    return snap;
-  }
-
-  /* ── запуск ──────────────────────────────────────────────────────────── */
   function setAdapter(a) {
     adapter = a;
     adapter.subscribe((snap) => {
-      state.snapshot = applyForcedState(snap);
+      const wasOnboarded = S.snap && S.snap.onboarded;
+      S.snap = snap;
+      if (snap.onboarded && wasOnboarded === false) S.last = "";
       render();
     });
   }
 
-  window.VEIL_UI = { setAdapter, state, mock: mockAdapter };
-  setAdapter(mockAdapter);
-
-  // пустой список серверов для демонстрации состояния
-  const emptyAdapter = {
-    subscribe(fn) { mockAdapter.subscribe(fn); },
-    connect: () => mockAdapter.connect(),
-    disconnect: () => mockAdapter.disconnect(),
-    selectServer: (id) => mockAdapter.selectServer(id),
-    toggleFav: () => {},
-    setSetting: (k, v) => mockAdapter.setSetting(k, v),
-    serverList: () => (state.forced === "empty" ? [] : mockAdapter.serverList()),
-    refresh: () => mockAdapter.refresh(),
-  };
-  if (new URLSearchParams(location.search).has("demo")) setAdapter(emptyAdapter);
+  window.VEIL_UI = { setAdapter, state: S, mock };
+  setAdapter(mock);
 })();
 
 </script>
 <script>
-/* мост WebView2 → ядро: без него интерфейс остаётся на макете */
+/* мост к ядру: без него интерфейс остаётся на макете */
 (() => {
   const wv = window.chrome && window.chrome.webview;
   if (!wv) return;
@@ -1603,7 +905,6 @@ body[data-overlay] .sheet { transform: translate(-50%, 0); }
     const m = e.data;
     if (!m || m.type !== "snapshot") return;
     if (m.servers) servers = m.servers;
-    if (m.servers && window.VEIL_UI) window.VEIL_UI.__servers = servers;
     if (cb) cb(m.snapshot);
   });
   const host = {
@@ -1612,19 +913,16 @@ body[data-overlay] .sheet { transform: translate(-50%, 0); }
     connect: () => post({ cmd: "connect" }),
     disconnect: () => post({ cmd: "disconnect" }),
     selectServer: (id) => post({ cmd: "select", id }),
-    toggleFav: (id) => post({ cmd: "fav", id }),
+    toggleFav: () => {},
     setSetting: (k, v) => post({ cmd: "setting", key: k, value: String(v) }),
+    onboard: () => post({ cmd: "onboard" }),
     refresh: () => post({ cmd: "refresh" }),
-    appAdd: () => post({ cmd: "app-add" }),
-    appToggle: (path) => post({ cmd: "app-toggle", path }),
-    appRun: (path) => post({ cmd: "app-run", path }),
-    appDel: (path) => post({ cmd: "app-del", path }),
     keyPaste: () => post({ cmd: "key-paste" }),
     keyAdd: (key) => post({ cmd: "key-add", key }),
     srvInstall: (cfg) => post({ cmd: "srv-install", host: cfg.host, port: String(cfg.port), user: cfg.user,
-                               pass: cfg.pass, keyfile: cfg.keyfile, domain: cfg.domain }),
+                                pass: cfg.pass, keyfile: cfg.keyfile, domain: cfg.domain }),
     srvConnect: (cfg) => post({ cmd: "srv-connect", host: cfg.host, port: String(cfg.port), user: cfg.user,
-                               pass: cfg.pass, keyfile: cfg.keyfile }),
+                                pass: cfg.pass, keyfile: cfg.keyfile }),
     srvKeys: () => post({ cmd: "srv-keys" }),
     srvIssue: (name) => post({ cmd: "srv-issue", name }),
     srvRevoke: (name) => post({ cmd: "srv-revoke", name }),
@@ -1632,6 +930,5 @@ body[data-overlay] .sheet { transform: translate(-50%, 0); }
   if (window.VEIL_UI) window.VEIL_UI.setAdapter(host);
 })();
 </script>
-
 </body>
 </html>
