@@ -63,6 +63,7 @@
     srvRevoke: (name) => post({ cmd: "srv-revoke", name }),
     srvForget: () => post({ cmd: "srv-forget" }),
     refreshSubs: () => post({ cmd: "sub-refresh" }),
+    profileDel: (id) => post({ cmd: "profile-del", id }),
   };
   if (window.VEIL_UI) window.VEIL_UI.setAdapter(host);
 })();

@@ -465,6 +465,22 @@ html:not(.ready) *, html:not(.ready) *::before, html:not(.ready) *::after {
 .caps.section { padding-top: 28px; padding-bottom: 4px; }
 .caps.section:first-child { padding-top: 8px; }
 
+/* строка сервера + удаление своего ключа */
+.city-row { display: flex; align-items: center; }
+.city-row .city { flex: 1 1 auto; }
+.city-row .del {
+  flex: 0 0 44px;
+  height: 44px;
+  margin-left: 8px;
+  border: 0;
+  background: none;
+  color: var(--sec);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+.city-row .del:hover { color: var(--danger); }
+
 </style>
 </head>
 <body>
@@ -616,7 +632,7 @@ html:not(.ready) *, html:not(.ready) *::before, html:not(.ready) *::after {
       keyPaste() { snap.keyMsg = "Макет: ключ из буфера не читается"; emit(); },
       keyAdd() {},
       srvConnect() { snap.srvStatus = "Макет: SSH недоступен"; emit(); },
-      srvInstall() {}, srvKeys() {}, srvIssue() {}, srvRevoke() {}, srvForget() {}, refreshSubs() {}
+      srvInstall() {}, srvKeys() {}, srvIssue() {}, srvRevoke() {}, srvForget() {}, refreshSubs() {}, profileDel() {}
     };
   })();
 
@@ -730,7 +746,7 @@ html:not(.ready) *, html:not(.ready) *::before, html:not(.ready) *::after {
     const item = (s) => {
       const c = country(s);
       const isActive = s.id === snap.serverId;
-      return `
+      const row = `
         <button class="city" data-pick="${esc(s.id)}" ${isActive ? 'aria-current="true"' : ""}>
           <span class="mark">${isActive ? "<i></i>" : ""}</span>
           <span>
@@ -739,6 +755,10 @@ html:not(.ready) *, html:not(.ready) *::before, html:not(.ready) *::after {
           </span>
           <span class="ping">${s.ping ? s.ping : "—"}</span>
         </button>`;
+      // удалить можно только свой ключ: серверы подписки уходят вместе с пулом
+      return s.own
+        ? `<div class="city-row">${row}<button class="del" data-del="${esc(s.id)}" aria-label="Удалить">×</button></div>`
+        : row;
     };
 
     const pool = list.filter((s) => s.sub);
@@ -997,6 +1017,9 @@ html:not(.ready) *, html:not(.ready) *::before, html:not(.ready) *::after {
   const closeSheet = () => { S.sheet = ""; S.last = ""; render(); };
 
   document.addEventListener("click", (e) => {
+    const del = e.target.closest("[data-del]");
+    if (del) { adapter.profileDel(del.dataset.del); return; }
+
     const dnsPick = e.target.closest("[data-dns]");
     if (dnsPick) { adapter.setSetting("dns", dnsPick.dataset.dns); closeSheet(); return; }
 
@@ -1161,6 +1184,7 @@ html:not(.ready) *, html:not(.ready) *::before, html:not(.ready) *::after {
     srvRevoke: (name) => post({ cmd: "srv-revoke", name }),
     srvForget: () => post({ cmd: "srv-forget" }),
     refreshSubs: () => post({ cmd: "sub-refresh" }),
+    profileDel: (id) => post({ cmd: "profile-del", id }),
   };
   if (window.VEIL_UI) window.VEIL_UI.setAdapter(host);
 })();

@@ -143,7 +143,7 @@
       keyPaste() { snap.keyMsg = "Макет: ключ из буфера не читается"; emit(); },
       keyAdd() {},
       srvConnect() { snap.srvStatus = "Макет: SSH недоступен"; emit(); },
-      srvInstall() {}, srvKeys() {}, srvIssue() {}, srvRevoke() {}, srvForget() {}, refreshSubs() {}
+      srvInstall() {}, srvKeys() {}, srvIssue() {}, srvRevoke() {}, srvForget() {}, refreshSubs() {}, profileDel() {}
     };
   })();
 
@@ -257,7 +257,7 @@
     const item = (s) => {
       const c = country(s);
       const isActive = s.id === snap.serverId;
-      return `
+      const row = `
         <button class="city" data-pick="${esc(s.id)}" ${isActive ? 'aria-current="true"' : ""}>
           <span class="mark">${isActive ? "<i></i>" : ""}</span>
           <span>
@@ -266,6 +266,10 @@
           </span>
           <span class="ping">${s.ping ? s.ping : "—"}</span>
         </button>`;
+      // удалить можно только свой ключ: серверы подписки уходят вместе с пулом
+      return s.own
+        ? `<div class="city-row">${row}<button class="del" data-del="${esc(s.id)}" aria-label="Удалить">×</button></div>`
+        : row;
     };
 
     const pool = list.filter((s) => s.sub);
@@ -524,6 +528,9 @@
   const closeSheet = () => { S.sheet = ""; S.last = ""; render(); };
 
   document.addEventListener("click", (e) => {
+    const del = e.target.closest("[data-del]");
+    if (del) { adapter.profileDel(del.dataset.del); return; }
+
     const dnsPick = e.target.closest("[data-dns]");
     if (dnsPick) { adapter.setSetting("dns", dnsPick.dataset.dns); closeSheet(); return; }
 

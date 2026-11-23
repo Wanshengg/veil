@@ -367,3 +367,19 @@ html:not(.ready) *, html:not(.ready) *::before, html:not(.ready) *::after {
 /* заголовки групп внутри шторки: «Подписка» / «Свои ключи» */
 .caps.section { padding-top: 28px; padding-bottom: 4px; }
 .caps.section:first-child { padding-top: 8px; }
+
+/* строка сервера + удаление своего ключа */
+.city-row { display: flex; align-items: center; }
+.city-row .city { flex: 1 1 auto; }
+.city-row .del {
+  flex: 0 0 44px;
+  height: 44px;
+  margin-left: 8px;
+  border: 0;
+  background: none;
+  color: var(--sec);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+.city-row .del:hover { color: var(--danger); }

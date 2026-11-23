@@ -51,6 +51,8 @@ namespace Veil
                 InitLoader();      // теперь тип CoreWebView2Environment доступен
                 // диагностика: несколько кликов подряд, через ;
                 string clicks = ArgOf(Environment.GetCommandLineArgs(), "--clicks=");
+                string delArg = ArgOf(Environment.GetCommandLineArgs(), "--del=");
+                if (delArg.Length > 0) { RunProfileDelete(delArg); return; }
                 string subTest = ArgOf(Environment.GetCommandLineArgs(), "--sub-test=");
                 if (subTest.Length > 0) { RunSubTest(subTest, false); return; }
                 string subAdd = ArgOf(Environment.GetCommandLineArgs(), "--sub-add=");
@@ -91,6 +93,20 @@ namespace Veil
         {
             foreach (string a in args) if (a.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return a.Substring(prefix.Length);
             return "";
+        }
+
+        // Удаление профиля без интерфейса: veil.exe --del=<host:port>
+        static void RunProfileDelete(string id)
+        {
+            try
+            {
+                List<Profile> list = Store.Load();
+                int n = list.RemoveAll(x => string.Equals(x.Server, id, StringComparison.OrdinalIgnoreCase));
+                Store.Save(list);
+                Log("del: удалено " + n + ", осталось " + list.Count);
+                foreach (Profile p in list) Log("del:   " + p.Server + "  " + p.Cc + "  " + (p.Sub.Length > 0 ? "подписка" : "свой ключ"));
+            }
+            catch (Exception ex) { Log("del: " + ex.Message); }
         }
 
         // Проверка подписки без интерфейса: veil.exe --sub-test=<ключ или файл с ключом>
@@ -1214,6 +1230,21 @@ namespace Veil
                     srvBusy = false; PushSafe();
                 });
             }
+            else if (cmd == "profile-del")
+            {
+                string id = Json(raw, "id") ?? "";
+                int idx = core.Profiles.FindIndex(x => string.Equals(x.Server, id, StringComparison.OrdinalIgnoreCase));
+                if (idx >= 0)
+                {
+                    core.Profiles.RemoveAt(idx);
+                    if (core.Selected >= core.Profiles.Count) core.Selected = Math.Max(0, core.Profiles.Count - 1);
+                    Store.Save(core.Profiles);
+                    keyMsg = "Удалён: " + id;
+                    if (core.State == "connected" && core.Current == null) core.Kill();
+                }
+                else keyMsg = "Такого сервера уже нет";
+                PushSafe();
+            }
             else if (cmd == "sub-refresh")
             {
                 ThreadPool.QueueUserWorkItem(delegate {
@@ -1633,7 +1664,8 @@ namespace Veil
                       : (p.ExitIp.Length > 0 ? p.ExitIp : "по IP-адресу"))).Append("\"")
                   .Append(",\"ping\":").Append(p == core.Current ? core.LastPing : 0)
                   .Append(",\"load\":0,\"fav\":false,\"sub\":").Append(p.Sub.Length > 0 ? "true" : "false")
-                  .Append(",\"exitIp\":\"").Append(Esc(p.ExitIp)).Append("\"}");
+                  .Append(",\"exitIp\":\"").Append(Esc(p.ExitIp)).Append("\"")
+                  .Append(",\"own\":").Append(p.Sub.Length == 0 ? "true" : "false").Append("}");
             }
             string sid = core.Current != null ? core.Current.Server : "";
             sb.Append("],\"snapshot\":{");
