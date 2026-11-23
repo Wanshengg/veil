@@ -6,3 +6,6 @@ testroot/
 probe.out
 *.out
 *.log
+# тестовые ключи и артефакты пула
+pool/demo-key.txt
+pool/*.bak
