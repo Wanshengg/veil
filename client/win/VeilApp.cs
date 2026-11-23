@@ -1172,7 +1172,7 @@ namespace Veil
                 ThreadPool.QueueUserWorkItem(delegate {
                     int added, dropped;
                     string err = Subs.Refresh(core.Profiles, out added, out dropped);
-                    if (added > 0 || dropped > 0) Store.Save(core.Profiles);
+                    Store.Save(core.Profiles);
                     Program.Log("subs manual: +" + added + " -" + dropped + " " + err);
                     PushSafe();
                 });
@@ -1478,12 +1478,9 @@ namespace Veil
                     {
                         int added, dropped;
                         string err = Subs.Refresh(core.Profiles, out added, out dropped);
-                        if (added > 0 || dropped > 0)
-                        {
-                            Store.Save(core.Profiles);
-                            if (core.Selected >= core.Profiles.Count) core.Selected = core.Profiles.Count - 1;
-                            Program.Log("subs refresh: +" + added + " -" + dropped);
-                        }
+                        Store.Save(core.Profiles);       // метаданные (страна, порты) тоже могли измениться
+                        if (core.Selected >= core.Profiles.Count) core.Selected = Math.Max(0, core.Profiles.Count - 1);
+                        if (added > 0 || dropped > 0) Program.Log("subs refresh: +" + added + " -" + dropped);
                         if (err.Length > 0) Program.Log("subs refresh: " + err);
                         else Program.Log("subs refresh: +" + added + " -" + dropped + " (всего " + core.Profiles.Count + ")");
                         PushSafe();

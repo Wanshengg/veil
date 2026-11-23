@@ -1,7 +1,7 @@
 {
   "v": 2,
   "pool": "chis",
-  "issued": "2026-11-23T22:40:00Z",
+  "issued": "2026-11-23T22:55:00Z",
   "ttl": 21600,
   "servers": [
     {
@@ -19,7 +19,7 @@
       "up": true
     },
     {
-      "id": "fr",
+      "id": "fi",
       "host": "fi.example.com",
       "ports": [
         8443,
@@ -28,8 +28,9 @@
         9443
       ],
       "sni": "fi.example.com",
-      "cc": "FR",
-      "country": "Франция",
+      "cc": "FI",
+      "country": "Финляндия",
+      "city": "Хельсинки",
       "up": true
     }
   ]

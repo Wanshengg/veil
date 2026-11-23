@@ -349,7 +349,8 @@ namespace Veil
                 foreach (Profile f in fresh)
                 {
                     Profile old = profiles.Find(x => x.Sub == subId && x.Server == f.Server);
-                    if (old != null) { f.Cc = old.Cc.Length > 0 ? old.Cc : f.Cc; f.Country = old.Country; f.ExitIp = old.ExitIp; }
+                    // страну и код берём из пула (это авторитетно), от старой записи — только IP выхода
+                    if (old != null) f.ExitIp = old.ExitIp;
                     else added++;
                 }
                 int before = profiles.RemoveAll(x => x.Sub == subId);
