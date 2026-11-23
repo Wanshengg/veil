@@ -167,10 +167,18 @@
   const row = (title, value, extra = "") =>
     `<div class="row"><span class="t">${esc(title)}</span>${extra || `<span class="v">${esc(value || "—")}</span>`}</div>`;
 
+  // Знак «фраза»: строка и точка. Цвета берутся из темы.
+  const mark = (w = 76) => `
+    <svg width="${w}" height="${Math.round(w * 0.3)}" viewBox="0 0 100 30" role="img" aria-label="phrase" class="mark">
+      <rect x="0" y="18" width="72" height="8" fill="var(--ink)" />
+      <rect x="76" y="2" width="24" height="24" fill="var(--accent)" />
+    </svg>`;
+
   /* ── экран: онбординг ─────────────────────────────────────────────────── */
 
   const viewOnboarding = () => `
     <section class="screen">
+      <div class="mark-row">${mark(88)}</div>
       <h1 class="phrase">Приложение создаст VPN-подключение.</h1>
       <div class="spacer"></div>
       <button class="btn filled" data-action="onboard">Разрешить</button>
@@ -275,29 +283,27 @@
       <div class="group">
         <div class="caps">Маршрутизация</div>
         <div class="row"><span class="t">TUN-режим</span>${switchBtn(!!s.tun, "set-tun", "TUN-режим")}</div>
-        <div class="row">
+        <div class="row clickable" data-action="dns">
           <span class="t">DNS</span>
-          <select class="plain" data-setting="dns" aria-label="DNS">
-            ${["Через туннель", "Системный", "1.1.1.1", "9.9.9.9"].map((d) => `<option ${d === s.dns ? "selected" : ""}>${d}</option>`).join("")}
-          </select>
+          <span class="v">${esc(s.dns || "—")} ›</span>
         </div>
       </div>
 
       <div class="group">
         <div class="caps">Профиль</div>
-        <div class="row clickable" data-action="keys"><span class="t">Ключ</span><span class="v">›</span></div>
-        <div class="row clickable" data-action="server"><span class="t">Свой сервер</span><span class="v">›</span></div>
-        <div class="row clickable" data-action="cities"><span class="t">Сервер</span><span class="v">›</span></div>
+        <div class="row clickable" data-action="keys"><span class="t">Ключ из буфера</span><span class="v">›</span></div>
+        <div class="row clickable" data-action="server"><span class="t">Сервер по SSH</span><span class="v">›</span></div>
+        <div class="row clickable" data-action="cities"><span class="t">Серверы</span><span class="v">›</span></div>
       </div>
 
       <div class="group">
         <div class="caps">Приложение</div>
         <div class="row">
           <span class="t">Тема</span>
-          <select class="plain" data-setting="theme" aria-label="Тема">
-            <option value="light" ${s.theme !== "dark" ? "selected" : ""}>Светлая</option>
-            <option value="dark"  ${s.theme === "dark" ? "selected" : ""}>Тёмная</option>
-          </select>
+          <span class="choice" role="group" aria-label="Тема">
+            <button type="button" data-action="set-theme" data-value="light" aria-pressed="${s.theme !== "dark"}">Светлая</button>
+            <button type="button" data-action="set-theme" data-value="dark" aria-pressed="${s.theme === "dark"}">Тёмная</button>
+          </span>
         </div>
         ${row("Язык", "Русский")}
         <div class="row clickable" data-action="logs"><span class="t">Журнал</span><span class="v">Открыть</span></div>
@@ -370,6 +376,25 @@
     </section>`;
   };
 
+  /* ── шторка: DNS ──────────────────────────────────────────────────────── */
+
+  const viewDns = (snap) => {
+    const values = ["Через туннель", "Системный", "1.1.1.1", "9.9.9.9"];
+    const current = snap.settings.dns;
+    return `
+      <div class="scrim" data-action="close-sheet"></div>
+      <div class="sheet" role="dialog" aria-label="DNS">
+        <div class="head"><div class="caps">DNS</div></div>
+        <div class="body">
+          ${values.map((v) => `
+            <button class="option" data-dns="${esc(v)}" ${v === current ? 'aria-current="true"' : ""}>
+              <span class="mark">${v === current ? "<i></i>" : ""}</span>
+              <span>${esc(v)}</span>
+            </button>`).join("")}
+        </div>
+      </div>`;
+  };
+
   /* ── шторка: журнал ───────────────────────────────────────────────────── */
 
   const viewLogs = (snap) => {
@@ -408,6 +433,7 @@
 
     const overlay = $("#overlay");
     const overlayHtml = S.sheet === "cities" ? viewCities(snap, servers)
+      : S.sheet === "dns" ? viewDns(snap)
       : S.sheet === "logs" ? viewLogs(snap)
       : "";
 
@@ -458,6 +484,9 @@
   const closeSheet = () => { S.sheet = ""; S.last = ""; render(); };
 
   document.addEventListener("click", (e) => {
+    const dnsPick = e.target.closest("[data-dns]");
+    if (dnsPick) { adapter.setSetting("dns", dnsPick.dataset.dns); closeSheet(); return; }
+
     const pick = e.target.closest("[data-pick]");
     if (pick) {
       const id = pick.dataset.pick;
@@ -486,6 +515,8 @@
     if (a === "keys") return go("keys");
     if (a === "server") return go("server");
     if (a === "logs") return openSheet("logs");
+    if (a === "dns") return openSheet("dns");
+    if (a === "set-theme") return adapter.setSetting("theme", el.dataset.value);
 
     if (a === "set-kill") return adapter.setSetting("killSwitch", !snap.settings.killSwitch);
     if (a === "set-split") return adapter.setSetting("split", !snap.settings.split);

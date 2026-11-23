@@ -311,3 +311,49 @@ select.plain {
   .phrase .fade, .sheet { animation: none !important; }
   * { transition: none !important; }
 }
+
+/* ── знак и текстовые варианты ─────────────────────────────────────────── */
+
+.mark-row { margin-bottom: 40px; }
+.mark { display: block; }
+
+.choice { display: flex; align-items: center; gap: 16px; }
+.choice button {
+  min-height: 44px;
+  padding: 0;
+  background: none;
+  border: 0;
+  font-family: inherit;
+  font-size: var(--fs-body);
+  color: var(--sec);
+  cursor: pointer;
+  transition: color var(--t-base) var(--ease);
+}
+.choice button[aria-pressed="true"] { color: var(--ink); font-weight: 500; }
+
+.option {
+  width: 100%;
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  font-family: inherit;
+  font-size: var(--fs-body);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+.option:last-child { border-bottom: 0; }
+.option[aria-current="true"] { font-weight: 600; }
+.option .mark { width: 8px; flex: 0 0 8px; }
+.option .mark i { display: block; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+
+/* ── полосы прокрутки под тему (без «светлого» системного трека) ────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--rule); }
+::-webkit-scrollbar-thumb:hover { background: var(--sec); }
