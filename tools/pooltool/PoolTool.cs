@@ -57,6 +57,23 @@ namespace Veil
                         Console.WriteLine(PoolCodec.Unpack(blob, pub, args[3]));
                         return 0;
                     }
+                    case "key":
+                    {
+                        // pooltool key <sub> <seed> <sni> <psk> [pk]
+                        if (args.Length < 5) return Usage();
+                        string pk = args.Length > 5 ? args[5] : "";
+                        var sb = new StringBuilder("v2");
+                        if (pk.Length > 0) sb.Append("|pk=").Append(pk);
+                        sb.Append("|sub=").Append(args[1]);
+                        sb.Append("|seed=").Append(args[2]);
+                        sb.Append("|sni=").Append(args[3]);
+                        sb.Append("|fp=chrome");
+                        sb.Append("|psk=").Append(args[4]);
+                        string raw = "veil://" + Convert.ToBase64String(Encoding.UTF8.GetBytes(sb.ToString()))
+                            .TrimEnd('=').Replace('+', '-').Replace('/', '_');
+                        Console.WriteLine(raw);
+                        return 0;
+                    }
                     case "url":
                     {
                         if (args.Length < 4) return Usage();
@@ -79,6 +96,7 @@ namespace Veil
             Console.Error.WriteLine("pooltool pub <priv.key>");
             Console.Error.WriteLine("pooltool pack <pool.json> <out.bin> <priv.key> <psk>");
             Console.Error.WriteLine("pooltool unpack <in.bin> <pub|pub.key> <psk>");
+            Console.Error.WriteLine("pooltool key <sub> <seed> <sni> <psk> [pk]");
             Console.Error.WriteLine("pooltool url <host> <blob-name> <token>");
             return 2;
         }

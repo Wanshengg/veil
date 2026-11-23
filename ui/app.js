@@ -267,6 +267,13 @@
         </button>`;
     };
 
+    const pool = list.filter((s) => s.sub);
+    const own = list.filter((s) => !s.sub);
+
+    const section = (title, items) => items.length
+      ? `<div class="caps section">${title}</div>${items.map(item).join("")}`
+      : "";
+
     return `
       <div class="scrim" data-action="close-sheet"></div>
       <div class="sheet" role="dialog" aria-label="Выбор сервера">
@@ -274,7 +281,9 @@
           <input class="search" id="citySearch" type="search" placeholder="Поиск" value="${esc(S.query)}" aria-label="Поиск сервера">
         </div>
         <div class="body">
-          ${list.length ? list.map(item).join("") : `<p class="msg">Ничего не нашлось</p>`}
+          ${list.length
+            ? section("Подписка", pool) + section("Свои ключи", own)
+            : `<p class="msg">Ничего не нашлось</p>`}
         </div>
       </div>`;
   };
@@ -313,7 +322,7 @@
         <div class="caps">Профиль</div>
         <div class="row clickable" data-action="keys"><span class="t">Ключ из буфера</span><span class="v">›</span></div>
         <div class="row clickable" data-action="server"><span class="t">Сервер по SSH</span><span class="v">›</span></div>
-        <div class="row clickable" data-action="cities"><span class="t">Серверы</span><span class="v">›</span></div>
+        <div class="row clickable" data-action="cities"><span class="t">Серверы</span><span class="v">${snap.srvPoolCount || 0} подписка · ${snap.srvOwnCount || 0} ключи ›</span></div>
         <div class="row clickable" data-action="sub-refresh"><span class="t">Обновить подписку</span><span class="v">↻</span></div>
       </div>
 

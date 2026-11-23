@@ -363,3 +363,7 @@ html:not(.ready) *, html:not(.ready) *::before, html:not(.ready) *::after {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--rule); }
 ::-webkit-scrollbar-thumb:hover { background: var(--sec); }
+
+/* заголовки групп внутри шторки: «Подписка» / «Свои ключи» */
+.caps.section { padding-top: 28px; padding-bottom: 4px; }
+.caps.section:first-child { padding-top: 8px; }

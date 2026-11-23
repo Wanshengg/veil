@@ -16,6 +16,7 @@ namespace Veil
     {
         public string Server = "", Sni = "", Fp = "chrome", Psk = "", Pin = "";
         public string Sub = "", Seed = "";
+        public string Pk = "";           // публичный ключ пула (своя подписка); пусто → встроенный
         public bool IsV2;
 
         public string[] Subs { get { return Sub.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries); } }
@@ -47,6 +48,7 @@ namespace Veil
                     else if (k == "fp") ki.Fp = v;
                     else if (k == "psk") ki.Psk = v;
                     else if (k == "pin") ki.Pin = v;
+                    else if (k == "pk") ki.Pk = v;
                 }
                 if (ki.Fp.Length == 0) ki.Fp = "chrome";
                 if (ki.Psk.Length < 8) return null;
@@ -66,9 +68,10 @@ namespace Veil
             return ki;
         }
 
-        public static string MakeV2(string sub, string seed, string sni, string fp, string psk, string pin)
+        public static string MakeV2(string sub, string seed, string sni, string fp, string psk, string pin, string pk)
         {
             var sb = new StringBuilder("v2");
+            if (!string.IsNullOrEmpty(pk)) sb.Append("|pk=").Append(pk);
             if (!string.IsNullOrEmpty(sub)) sb.Append("|sub=").Append(sub);
             if (!string.IsNullOrEmpty(seed)) sb.Append("|seed=").Append(seed);
             if (!string.IsNullOrEmpty(sni)) sb.Append("|sni=").Append(sni);
@@ -335,7 +338,7 @@ namespace Veil
                 string used = "";
                 try
                 {
-                    doc = PoolClient.Fetch(ki.Subs, ki.Psk, ki.Pin, out used);
+                    doc = PoolClient.Fetch(ki.Subs, ki.Psk, ki.Pin, ki.Pk, out used);
                     Program.Log("subs: " + subId + " ← " + used);
                 }
                 catch (Exception ex) { err = "пул " + ki.Sub + ": " + ex.Message; continue; }
@@ -365,7 +368,7 @@ namespace Veil
         // Публичный ключ подписи пула. Приватный лежит только дома.
         public const string PublicKeyB64 = "P7hnrMYP++C9p9Itf9IG/9rR/3qNGyAppYnE/dfdGWc=";
 
-        public static PoolDoc Fetch(string[] urls, string psk, string pin, out string usedUrl)
+        public static PoolDoc Fetch(string[] urls, string psk, string pin, string pk, out string usedUrl)
         {
             usedUrl = "";
             string lastErr = "";
@@ -376,7 +379,8 @@ namespace Veil
                 try
                 {
                     byte[] blob = Download(url, pin);
-                    string json = PoolCodec.Unpack(blob, PoolCodec.KeyFromBase64(PublicKeyB64), psk);
+                    string pubText = string.IsNullOrEmpty(pk) ? PublicKeyB64 : pk;
+                    string json = PoolCodec.Unpack(blob, PoolCodec.KeyFromBase64(pubText), psk);
                     PoolDoc doc = PoolDoc.Parse(json);
                     usedUrl = url;
                     return doc;

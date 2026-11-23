@@ -103,10 +103,11 @@ namespace Veil
                 if (File.Exists(key)) key = File.ReadAllText(key).Trim();
                 KeyInfo ki = KeyInfo.Parse(key);
                 if (ki == null) { Log("sub-test: ключ не распознан"); return; }
-                Log("sub-test: v2=" + ki.IsV2 + " sub=" + ki.Sub + " seed=" + ki.Seed + " pskLen=" + ki.Psk.Length);
+                Log("sub-test: v2=" + ki.IsV2 + " sub=" + ki.Sub + " seed=" + ki.Seed + " pskLen=" + ki.Psk.Length +
+                    " pk=" + (ki.Pk.Length > 0 ? ki.Pk : "(встроенный)"));
 
                 string used;
-                PoolDoc doc = PoolClient.Fetch(ki.Subs, ki.Psk, ki.Pin, out used);
+                PoolDoc doc = PoolClient.Fetch(ki.Subs, ki.Psk, ki.Pin, ki.Pk, out used);
                 Log("sub-test: пул " + (doc.Name.Length > 0 ? doc.Name : "?") + " от " + doc.Issued + " · серверов " + doc.Servers.Count + " · url " + used);
                 foreach (PoolServer s in doc.Servers)
                     Log("sub-test:   " + s.Id + " " + s.Endpoint + " [" + string.Join(",", s.Ports.ConvertAll(x => x.ToString()).ToArray()) + "] " + s.Cc + " " + s.Country + (s.Up ? "" : " (down)"));
@@ -1427,7 +1428,7 @@ namespace Veil
 
                 PoolDoc doc = null;
                 string err = "";
-                try { string used; doc = PoolClient.Fetch(ki.Subs, ki.Psk, ki.Pin, out used); }
+                try { string used; doc = PoolClient.Fetch(ki.Subs, ki.Psk, ki.Pin, ki.Pk, out used); }
                 catch (Exception ex) { err = ex.Message; }
 
                 List<Profile> add = new List<Profile>();
@@ -1624,6 +1625,8 @@ namespace Veil
               .Append("\",\"srvUser\":\"").Append(Esc(srvUser.Length > 0 ? srvUser : (SshCreds.User.Length > 0 ? SshCreds.User : "root")))
               .Append("\",\"srvSaved\":").Append(SshCreds.Has ? "true" : "false")
               .Append(",\"srvInstalled\":").Append(srvInstalled ? "true" : "false");
+            sb.Append(",\"srvPoolCount\":").Append(core.Profiles.FindAll(x => x.Sub.Length > 0).Count);
+            sb.Append(",\"srvOwnCount\":").Append(core.Profiles.FindAll(x => x.Sub.Length == 0).Count);
             sb.Append(",\"srvKeys\":[");
             for (int i = 0; i < srvKeys.Count; i++) { if (i > 0) sb.Append(','); sb.Append("\"").Append(Esc(srvKeys[i])).Append("\""); }
             sb.Append("]");
