@@ -1,7 +1,9 @@
 /* veil — токены концепта «Фраза».
-   Светлая бумага, тушь, один акцент. Ни градиентов, ни теней, ни стекла. */
+   Бумага и тушь. Две темы — светлая и тёмная, обе без градиентов и теней. */
 
 :root {
+  /* светлая (по умолчанию) */
+  color-scheme: light;
   --bg:     #F6F4EF;
   --ink:    #16181D;
   --sec:    #6E7076;
@@ -9,6 +11,12 @@
   --accent: #1E6B4F;
   --danger: #B3261E;
   --mute:   #B9B6AE;
+
+  --on-ink:    #FFFFFF;
+  --on-danger: #FFFFFF;
+  --word-line: rgba(22, 24, 29, 0.30);
+  --scrim:     rgba(22, 24, 29, 0.18);
+  --knob-off:  #6E7076;
 
   --sans: 'Golos Text', 'Segoe UI', system-ui, -apple-system, sans-serif;
   --mono: 'IBM Plex Mono', Consolas, ui-monospace, monospace;
@@ -27,4 +35,21 @@
   --t-fast: 120ms;
   --t-base: 180ms;
   --ease: cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg:     #101216;
+  --ink:    #E9EBEF;
+  --sec:    #9AA1AC;
+  --rule:   #262A32;
+  --accent: #43C08F;
+  --danger: #E4695F;
+  --mute:   #50565F;
+
+  --on-ink:    #101216;
+  --on-danger: #1A0B0A;
+  --word-line: rgba(233, 235, 239, 0.34);
+  --scrim:     rgba(0, 0, 0, 0.58);
+  --knob-off:  #9AA1AC;
 }

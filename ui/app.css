@@ -49,7 +49,7 @@ body {
   cursor: pointer;
   text-decoration: underline;
   text-decoration-thickness: 1px;
-  text-decoration-color: rgba(22, 24, 29, 0.30);
+  text-decoration-color: var(--word-line);
   text-underline-offset: 4px;
 }
 .chev { font-size: 0.62em; color: var(--sec); margin-left: 2px; }
@@ -104,9 +104,9 @@ body {
   transition: background var(--t-base) var(--ease), color var(--t-base) var(--ease),
               border-color var(--t-base) var(--ease);
 }
-.btn.filled  { background: var(--ink); color: #fff; }
+.btn.filled  { background: var(--ink); color: var(--on-ink); }
 .btn.outline { background: transparent; border-color: var(--ink); color: var(--ink); }
-.btn.danger  { background: var(--danger); color: #fff; }
+.btn.danger  { background: var(--danger); color: var(--on-danger); }
 .btn:disabled { opacity: 0.45; cursor: default; }
 
 .link-row {
@@ -201,7 +201,7 @@ body {
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: var(--sec);
+  background: var(--knob-off);
   transform: translateY(-50%);
   transition: left var(--t-base) var(--ease), background var(--t-base) var(--ease);
 }
@@ -241,7 +241,7 @@ select.plain {
 
 /* ── шторка ────────────────────────────────────────────────────────────── */
 
-.scrim { position: fixed; inset: 0; background: rgba(22, 24, 29, 0.18); }
+.scrim { position: fixed; inset: 0; background: var(--scrim); }
 .sheet {
   position: fixed;
   left: 0; right: 0; bottom: 0;

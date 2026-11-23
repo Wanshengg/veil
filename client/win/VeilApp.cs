@@ -161,14 +161,20 @@ namespace Veil
         static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
 
         // Светлая рамка окна: тёмный системный заголовок спорит с бумажным интерфейсом
-        public static void ForceLightTitleBar(IntPtr hwnd, int mode)
+        // Заголовок окна под тему интерфейса: dark=1 — тёмный, 0 — светлый.
+        // 20 — DWMWA_USE_IMMERSIVE_DARK_MODE, 35 — DWMWA_CAPTION_COLOR (BGR),
+        // 36 — DWMWA_TEXT_COLOR.
+        public static void ForceLightTitleBar(IntPtr hwnd, int dark)
         {
             try
             {
-                int dark = mode;                       // 20 — dark mode, 0 = светлая
-                DwmSetWindowAttribute(hwnd, 20, ref dark, sizeof(int));
-                int caption = 0x00F4F6F6;              // BGR под --bg (для сборок без поддержки 20)
+                int useDark = dark == 1 ? 1 : 0;
+                DwmSetWindowAttribute(hwnd, 20, ref useDark, sizeof(int));
+
+                int caption = dark == 1 ? 0x00161210 : 0x00EFF4F6;   // BGR: #101216 / #F6F4EF
+                int textCol = dark == 1 ? 0x00EFEBE9 : 0x001D1816;   // BGR: #E9EBEF / #16181D
                 DwmSetWindowAttribute(hwnd, 35, ref caption, sizeof(int));
+                DwmSetWindowAttribute(hwnd, 36, ref textCol, sizeof(int));
             }
             catch { }
         }
@@ -812,7 +818,7 @@ namespace Veil
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
             Settings.Load();
-            Program.ForceLightTitleBar(Handle, 0);
+            Program.ForceLightTitleBar(Handle, Settings.Theme == "dark" ? 1 : 0);
             try
             {
                 using (Stream ico = System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream("veil.ico"))
@@ -1109,7 +1115,12 @@ namespace Veil
                 if (k == "killSwitch") { Settings.KillSwitch = v == "true"; Settings.Save(); }
                 if (k == "autostart") { Settings.Autostart = v == "true"; Settings.Save(); Settings.ApplyAutostart(); }
                 if (k == "dns") { Settings.Dns = v; Settings.Save(); }
-                if (k == "theme") { Settings.Theme = v; Settings.Save(); }
+                if (k == "theme")
+                {
+                    Settings.Theme = v;
+                    Settings.Save();
+                    Program.ForceLightTitleBar(Handle, v == "dark" ? 1 : 0);
+                }
                 if (k == "tun")
                 {
                     bool want = v == "true";

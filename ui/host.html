@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ru" data-theme="dark">
+<html lang="ru" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -10,9 +10,11 @@
 <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 /* veil — токены концепта «Фраза».
-   Светлая бумага, тушь, один акцент. Ни градиентов, ни теней, ни стекла. */
+   Бумага и тушь. Две темы — светлая и тёмная, обе без градиентов и теней. */
 
 :root {
+  /* светлая (по умолчанию) */
+  color-scheme: light;
   --bg:     #F6F4EF;
   --ink:    #16181D;
   --sec:    #6E7076;
@@ -20,6 +22,12 @@
   --accent: #1E6B4F;
   --danger: #B3261E;
   --mute:   #B9B6AE;
+
+  --on-ink:    #FFFFFF;
+  --on-danger: #FFFFFF;
+  --word-line: rgba(22, 24, 29, 0.30);
+  --scrim:     rgba(22, 24, 29, 0.18);
+  --knob-off:  #6E7076;
 
   --sans: 'Golos Text', 'Segoe UI', system-ui, -apple-system, sans-serif;
   --mono: 'IBM Plex Mono', Consolas, ui-monospace, monospace;
@@ -38,6 +46,23 @@
   --t-fast: 120ms;
   --t-base: 180ms;
   --ease: cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg:     #101216;
+  --ink:    #E9EBEF;
+  --sec:    #9AA1AC;
+  --rule:   #262A32;
+  --accent: #43C08F;
+  --danger: #E4695F;
+  --mute:   #50565F;
+
+  --on-ink:    #101216;
+  --on-danger: #1A0B0A;
+  --word-line: rgba(233, 235, 239, 0.34);
+  --scrim:     rgba(0, 0, 0, 0.58);
+  --knob-off:  #9AA1AC;
 }
 
 </style>
@@ -93,7 +118,7 @@ body {
   cursor: pointer;
   text-decoration: underline;
   text-decoration-thickness: 1px;
-  text-decoration-color: rgba(22, 24, 29, 0.30);
+  text-decoration-color: var(--word-line);
   text-underline-offset: 4px;
 }
 .chev { font-size: 0.62em; color: var(--sec); margin-left: 2px; }
@@ -148,9 +173,9 @@ body {
   transition: background var(--t-base) var(--ease), color var(--t-base) var(--ease),
               border-color var(--t-base) var(--ease);
 }
-.btn.filled  { background: var(--ink); color: #fff; }
+.btn.filled  { background: var(--ink); color: var(--on-ink); }
 .btn.outline { background: transparent; border-color: var(--ink); color: var(--ink); }
-.btn.danger  { background: var(--danger); color: #fff; }
+.btn.danger  { background: var(--danger); color: var(--on-danger); }
 .btn:disabled { opacity: 0.45; cursor: default; }
 
 .link-row {
@@ -245,7 +270,7 @@ body {
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: var(--sec);
+  background: var(--knob-off);
   transform: translateY(-50%);
   transition: left var(--t-base) var(--ease), background var(--t-base) var(--ease);
 }
@@ -285,7 +310,7 @@ select.plain {
 
 /* ── шторка ────────────────────────────────────────────────────────────── */
 
-.scrim { position: fixed; inset: 0; background: rgba(22, 24, 29, 0.18); }
+.scrim { position: fixed; inset: 0; background: var(--scrim); }
 .sheet {
   position: fixed;
   left: 0; right: 0; bottom: 0;
@@ -656,7 +681,13 @@ select.plain {
 
       <div class="group">
         <div class="caps">Приложение</div>
-        ${row("Тема", "Светлая")}
+        <div class="row">
+          <span class="t">Тема</span>
+          <select class="plain" data-setting="theme" aria-label="Тема">
+            <option value="light" ${s.theme !== "dark" ? "selected" : ""}>Светлая</option>
+            <option value="dark"  ${s.theme === "dark" ? "selected" : ""}>Тёмная</option>
+          </select>
+        </div>
         ${row("Язык", "Русский")}
         <div class="row clickable" data-action="logs"><span class="t">Журнал</span><span class="v">Открыть</span></div>
       </div>
@@ -754,6 +785,8 @@ select.plain {
     if (!snap) return;
     const servers = adapter.serverList() || [];
     const view = $("#view");
+    const theme = S.snap && S.snap.settings && S.snap.settings.theme === "dark" ? "dark" : "light";
+    if (document.documentElement.dataset.theme !== theme) document.documentElement.dataset.theme = theme;
 
     let html;
     if (!snap.onboarded) html = viewOnboarding();
@@ -771,6 +804,7 @@ select.plain {
     const key = [
       S.screen, S.sheet, snap.state, snap.onboarded ? 1 : 0, snap.serverId,
       snap.settings.killSwitch, snap.settings.split, snap.settings.autostart, snap.settings.tun, snap.settings.dns,
+      snap.settings.theme,
       snap.error || "", snap.keyMsg || "", snap.srvStatus || "", snap.srvBusy ? 1 : 0,
       (snap.srvKeys || []).join(","), servers.length
     ].join("|");

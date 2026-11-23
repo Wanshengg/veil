@@ -292,7 +292,13 @@
 
       <div class="group">
         <div class="caps">Приложение</div>
-        ${row("Тема", "Светлая")}
+        <div class="row">
+          <span class="t">Тема</span>
+          <select class="plain" data-setting="theme" aria-label="Тема">
+            <option value="light" ${s.theme !== "dark" ? "selected" : ""}>Светлая</option>
+            <option value="dark"  ${s.theme === "dark" ? "selected" : ""}>Тёмная</option>
+          </select>
+        </div>
         ${row("Язык", "Русский")}
         <div class="row clickable" data-action="logs"><span class="t">Журнал</span><span class="v">Открыть</span></div>
       </div>
@@ -390,6 +396,8 @@
     if (!snap) return;
     const servers = adapter.serverList() || [];
     const view = $("#view");
+    const theme = S.snap && S.snap.settings && S.snap.settings.theme === "dark" ? "dark" : "light";
+    if (document.documentElement.dataset.theme !== theme) document.documentElement.dataset.theme = theme;
 
     let html;
     if (!snap.onboarded) html = viewOnboarding();
@@ -407,6 +415,7 @@
     const key = [
       S.screen, S.sheet, snap.state, snap.onboarded ? 1 : 0, snap.serverId,
       snap.settings.killSwitch, snap.settings.split, snap.settings.autostart, snap.settings.tun, snap.settings.dns,
+      snap.settings.theme,
       snap.error || "", snap.keyMsg || "", snap.srvStatus || "", snap.srvBusy ? 1 : 0,
       (snap.srvKeys || []).join(","), servers.length
     ].join("|");
