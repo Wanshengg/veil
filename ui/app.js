@@ -373,16 +373,18 @@
         ${field("srvUser", "Пользователь", "root", "text", snap.srvUser)}
         ${field("srvSecret", "Пароль или путь к ключу",
           snap.srvSaved ? "сохранено — оставь пустым" : "пароль или C:\\Users\\you\\.ssh\\id_ed25519")}
-        ${field("srvDomain", "Домен для сертификата", "необязательно")}
+        ${snap.srvInstalled ? "" : field("srvDomain", "Домен для сертификата", "необязательно — тогда самоподписанный")}
         ${snap.srvSaved
           ? `<div class="row clickable" data-action="srv-forget">
                <span class="t">Данные SSH сохранены</span><span class="v">Забыть ›</span>
              </div>`
           : ""}
         <div class="actions">
-          <button class="btn filled" data-action="srv-install" ${busy ? "disabled" : ""}>Установить сервер</button>
-          <button class="btn outline" data-action="srv-connect" ${busy ? "disabled" : ""}>Только подключиться</button>
+          <button class="btn filled" data-action="srv-connect" ${busy ? "disabled" : ""}>Подключиться</button>
         </div>
+        <p class="msg">${snap.srvInstalled
+          ? "Сервер уже установлен — останется выдать ключи."
+          : "Если сервер ещё не стоит, приложение само загрузит и настроит его."}</p>
         <p class="msg ${/ошиб|не принял|не удалось/i.test(snap.srvStatus || "") ? "err" : ""}">${esc(snap.srvStatus || "")}</p>
       </div>
 
@@ -390,7 +392,7 @@
         <div class="caps">Ключи</div>
         ${keys.length
           ? keys.map((k) => `<div class="row"><span class="t">${esc(k)}</span><button class="btn outline" style="height:36px;width:auto;padding:0 12px;font-size:13px" data-action="srv-revoke" data-name="${esc(k)}">Отозвать</button></div>`).join("")
-          : `<p class="msg">Пока не читал список</p>`}
+          : `<p class="msg">${snap.srvInstalled ? "Пока не читал список" : "Ключи появятся после установки"}</p>`}
         <label class="field">
           <span class="caps">Новый ключ</span>
           <input id="srvNewKey" type="text" placeholder="имя: мама, друг" ${busy ? "disabled" : ""}>
@@ -469,6 +471,7 @@
       snap.settings.killSwitch, snap.settings.split, snap.settings.autostart, snap.settings.tun, snap.settings.dns,
       snap.settings.theme,
       snap.error || "", snap.keyMsg || "", snap.srvStatus || "", snap.srvBusy ? 1 : 0,
+      snap.srvInstalled ? 1 : 0, snap.srvSaved ? 1 : 0,
       (snap.srvKeys || []).join(","), servers.length
     ].join("|");
 
@@ -572,7 +575,7 @@
         secret: val("srvSecret"), domain: val("srvDomain")
       };
       if (!cfg.host) return;
-      if (a === "srv-install") adapter.srvInstall(cfg); else adapter.srvConnect(cfg);
+      adapter.srvConnect(cfg);
       return;
     }
     if (a === "srv-issue") {

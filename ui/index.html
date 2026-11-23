@@ -57,7 +57,7 @@
     srvInstall: (cfg) => post({ cmd: "srv-install", host: cfg.host, port: String(cfg.port), user: cfg.user,
                                 secret: cfg.secret, domain: cfg.domain }),
     srvConnect: (cfg) => post({ cmd: "srv-connect", host: cfg.host, port: String(cfg.port), user: cfg.user,
-                                secret: cfg.secret }),
+                                secret: cfg.secret, domain: cfg.domain }),
     srvKeys: () => post({ cmd: "srv-keys" }),
     srvIssue: (name) => post({ cmd: "srv-issue", name }),
     srvRevoke: (name) => post({ cmd: "srv-revoke", name }),

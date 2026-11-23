@@ -94,6 +94,16 @@ namespace Veil
         }
 
         // Список ключей: имена из /opt/veil/keys.txt
+        // Установлен ли сервер: есть бинарник. Если юнит остановлен — поднимаем.
+        // Возвращает true, если сервер готов принимать клиентов.
+        public static bool Installed(SshClient c)
+        {
+            string o = Run(c, "if [ -x /opt/veil/veil-server ]; then echo bin; else echo none; fi", 30);
+            if (o.IndexOf("bin", StringComparison.OrdinalIgnoreCase) < 0) return false;
+            Run(c, "systemctl is-active veil >/dev/null 2>&1 || systemctl start veil", 60);
+            return true;
+        }
+
         public static List<string> Keys(SshClient c)
         {
             var list = new List<string>();
@@ -169,6 +179,36 @@ namespace Veil
 
 namespace Veil
 {
+    public static class SshText
+    {
+        // Разэкранировать строку, пришедшую из JSON веб-страницы:
+        // \" → ", \\ → \, \n, \r, \t и \uXXXX. Без этого Windows-путь
+        // C:\\Users\\... приходит с удвоенными слэшами и File.Exists его не видит.
+        public static string Unescape(string s)
+        {
+            if (string.IsNullOrEmpty(s) || s.IndexOf('\\') < 0) return s;
+            var sb = new StringBuilder(s.Length);
+            for (int i = 0; i < s.Length; i++)
+            {
+                if (s[i] != '\\' || i + 1 >= s.Length) { sb.Append(s[i]); continue; }
+                char n = s[++i];
+                if (n == 'n') sb.Append('\n');
+                else if (n == 'r') sb.Append('\r');
+                else if (n == 't') sb.Append('\t');
+                else if (n == 'u' && i + 4 < s.Length)
+                {
+                    string hex = s.Substring(i + 1, 4);
+                    int code;
+                    if (int.TryParse(hex, System.Globalization.NumberStyles.HexNumber, null, out code))
+                    { sb.Append((char)code); i += 4; }
+                    else sb.Append(n);
+                }
+                else sb.Append(n);
+            }
+            return sb.ToString();
+        }
+    }
+
     // Данные SSH, сохранённые между запусками. Хост и логин лежат открыто,
     // секрет (пароль или путь к ключу) — через DPAPI, то есть расшифровать
     // их может только этот же пользователь Windows на этой машине.
@@ -215,6 +255,12 @@ namespace Veil
                     else if (k == "user") User = v;
                     else if (k == "secret") Secret = v;
                     else if (k == "port") { int p; if (int.TryParse(v, out p)) Port = p; }
+                }
+                // путь, сохранённый старой версией с удвоенными слэшами
+                if (Secret.IndexOf("\\\\") >= 0)
+                {
+                    string fixedPath = Secret.Replace("\\\\", "\\");
+                    if (File.Exists(fixedPath)) { Secret = fixedPath; Save(); }
                 }
                 return Host.Length > 0;
             }

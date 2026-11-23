@@ -49,6 +49,16 @@ namespace Veil
                 SysProxy.RestoreIfStale();   // убрать висящий прокси прошлого запуска
                 ExtractAll();      // разложить DLL до первого обращения к WebView2
                 InitLoader();      // теперь тип CoreWebView2Environment доступен
+                // диагностика: несколько кликов подряд, через ;
+                string clicks = ArgOf(Environment.GetCommandLineArgs(), "--clicks=");
+                string jsonTest = ArgOf(Environment.GetCommandLineArgs(), "--json-test=");
+                if (jsonTest.Length > 0)
+                {
+                    string v = SshText.Unescape(jsonTest);
+                    Log("json-test: in=" + jsonTest);
+                    Log("json-test: out=" + v + " len=" + v.Length + " exists=" + File.Exists(v));
+                    return;
+                }
                 string sshSave = ArgOf(Environment.GetCommandLineArgs(), "--ssh-save=");
                 if (sshSave.Length > 0) { SshCreds.Host = "h"; RunSshCredsTest(sshSave, true); return; }
                 string sshShow = ArgOf(Environment.GetCommandLineArgs(), "--ssh-show=");
@@ -718,7 +728,7 @@ namespace Veil
             if (i < 0) return null;
             i += pat.Length;
             int j = s.IndexOf('"', i);
-            return j > i ? s.Substring(i, j - i) : null;
+            return j > i ? SshText.Unescape(s.Substring(i, j - i)) : null;
         }
 
         public void Kill()
@@ -918,6 +928,19 @@ namespace Veil
                             if (openTab.Length > 0)
                                 await web.CoreWebView2.ExecuteScriptAsync(
                                     "document.querySelector('.tab[data-tab=" + openTab + "]').click()");
+                            // несколько кликов подряд: --clicks=[data-action=settings];[data-action=server]
+                            string clicksArg = Program.ArgOf(Environment.GetCommandLineArgs(), "--clicks=");
+                            if (clicksArg.Length > 0)
+                            {
+                                foreach (string one in clicksArg.Split(';'))
+                                {
+                                    if (one.Trim().Length == 0) continue;
+                                    Program.Log("debug clicks: " + one);
+                                    await web.CoreWebView2.ExecuteScriptAsync(
+                                        "(() => { const el = document.querySelector(" + Program.QuoteJs(one.Trim()) + "); if (!el) return 'нет элемента'; el.click(); return 'ok'; })()");
+                                    await System.Threading.Tasks.Task.Delay(350);
+                                }
+                            }
                             // отладочный клик по селектору: veil.exe --click=[data-action=settings]
                             string clickSel = Program.ArgOf(Environment.GetCommandLineArgs(), "--click=");
                             if (clickSel.Length > 0)
@@ -1002,6 +1025,8 @@ namespace Veil
 
             var t = new SshTarget { Host = host, Port = IntOr(port, SshCreds.Port > 0 ? SshCreds.Port : 22), User = user };
             bool looksPath = secret.Contains("\\") || secret.Contains("/");
+            if (looksPath && !File.Exists(secret) && File.Exists(secret.Replace("\\\\", "\\")))
+                secret = secret.Replace("\\\\", "\\");          // путь из старой версии с двойными слэшами
             if (looksPath && File.Exists(secret)) t.KeyPath = secret;
             else t.Password = secret;
             return t;
@@ -1058,15 +1083,28 @@ namespace Veil
                 srvTarget = MakeTarget(Json(raw, "host"), Json(raw, "port"), Json(raw, "user"), Json(raw, "secret"));
                 if (srvTarget.Host.Length == 0) { srvStatus = "Укажи сервер"; PushSafe(); return; }
                 srvHost = srvTarget.Host; srvUser = srvTarget.User;
-                srvBusy = true; srvStatus = "Подключаюсь по SSH…"; PushSafe();
+                string srvDomain = Json(raw, "domain").Trim();
+                srvEnteredSecret = (Json(raw, "secret") ?? "").Trim();
+                srvBusy = true; srvStatus = "Соединяюсь по SSH…"; PushSafe();
                 ThreadPool.QueueUserWorkItem(delegate {
                     try
                     {
                         using (SshClient sc = ServerSetup.Connect(srvTarget))
                         {
+                            srvStatus = "Проверяю, установлен ли сервер…"; PushSafe();
+                            srvInstalled = ServerSetup.Installed(sc);
+
+                            if (!srvInstalled)
+                            {
+                                // ставим сами: бинарник, сертификат, юнит, первый ключ
+                                srvBusy = true; PushSafe();
+                                DoInstall(srvDomain);
+                                return;
+                            }
+
                             srvKeys = ServerSetup.Keys(sc);
                             srvPin = ServerSetup.Pin(sc);
-                            RememberSsh(srvTarget, Json(raw, "secret"));
+                            RememberSsh(srvTarget, srvEnteredSecret);
                             srvStatus = "Подключено · ключей: " + srvKeys.Count + " · данные сохранены";
                         }
                     }
@@ -1230,7 +1268,7 @@ namespace Veil
             if (s[i] == '"')
             {
                 int j = s.IndexOf('"', i + 1);
-                return j > i ? s.Substring(i + 1, j - i - 1) : null;
+                return j > i ? SshText.Unescape(s.Substring(i + 1, j - i - 1)) : null;
             }
             int k = i;
             while (k < s.Length && ",}]".IndexOf(s[k]) < 0) k++;
@@ -1268,7 +1306,11 @@ namespace Veil
             {
                 web.CoreWebView2.PostWebMessageAsJson(s);
             }
-            catch (Exception ex) { Program.Log("push failed: " + ex.Message); }
+            catch (Exception ex)
+            {
+                Program.Log("push failed: " + ex.GetType().Name + ": " + ex.Message);
+                Program.Log("snapshot: " + (s.Length > 1500 ? s.Substring(0, 1500) : s));
+            }
         }
 
         string keyMsg = "";
@@ -1303,7 +1345,7 @@ namespace Veil
         SshTarget srvTarget = null;
         string srvHost = "", srvUser = "", srvPin = "", srvStatus = "", srvEnteredSecret = "";
         List<string> srvKeys = new List<string>();
-        bool srvBusy = false;
+        bool srvBusy = false, srvInstalled = false;
 
         static int IntOr(string s, int def) { int v; return int.TryParse(s, out v) && v > 0 && v < 65536 ? v : def; }
         static string Short(Exception ex) { string m = ex.Message; return m.Length > 160 ? m.Substring(0, 160) : m; }
@@ -1354,6 +1396,7 @@ namespace Veil
                     }
                     srvKeys = ServerSetup.Keys(sc);
                     RememberSsh(srvTarget, srvEnteredSecret);
+                    srvInstalled = true;
                     srvStatus = "Сервер готов · ключей: " + srvKeys.Count + (pin.Length > 0 ? " · сертификат по отпечатку" : " · Let's Encrypt");
                     keyMsg = "Ключ добавлен на главную";
                 }
@@ -1428,7 +1471,8 @@ namespace Veil
             sb.Append(",\"srvBusy\":").Append(srvBusy ? "true" : "false");
             sb.Append(",\"srvHost\":\"").Append(Esc(srvHost.Length > 0 ? srvHost : SshCreds.Host))
               .Append("\",\"srvUser\":\"").Append(Esc(srvUser.Length > 0 ? srvUser : (SshCreds.User.Length > 0 ? SshCreds.User : "root")))
-              .Append("\",\"srvSaved\":").Append(SshCreds.Has ? "true" : "false");
+              .Append("\",\"srvSaved\":").Append(SshCreds.Has ? "true" : "false")
+              .Append(",\"srvInstalled\":").Append(srvInstalled ? "true" : "false");
             sb.Append(",\"srvKeys\":[");
             for (int i = 0; i < srvKeys.Count; i++) { if (i > 0) sb.Append(','); sb.Append("\"").Append(Esc(srvKeys[i])).Append("\""); }
             sb.Append("]");
