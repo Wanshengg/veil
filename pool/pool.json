@@ -1,52 +1,23 @@
 {
   "v": 2,
   "pool": "chis",
-  "issued": "2026-11-23T23:40:00Z",
+  "issued": "2026-11-24T00:20:00Z",
   "ttl": 21600,
   "servers": [
     {
-      "id": "es",
-      "host": "se.example.com",
-      "ports": [
-        8443,
-        443,
-        2083,
-        9443
-      ],
-      "sni": "se.example.com",
-      "cc": "ES",
-      "country": "Испания",
-      "up": true
-    },
-    {
-      "id": "es-ru",
+      "id": "se",
       "host": "ru-relay.example.com",
       "ports": [
         10000
       ],
       "sni": "se.example.com",
-      "cc": "ES",
-      "country": "Испания",
-      "city": "через РУ",
+      "cc": "SE",
+      "country": "Швеция",
+      "city": "Стокгольм",
       "up": true
     },
     {
       "id": "fi",
-      "host": "fi.example.com",
-      "ports": [
-        8443,
-        443,
-        2083,
-        9443
-      ],
-      "sni": "fi.example.com",
-      "cc": "FI",
-      "country": "Финляндия",
-      "city": "Хельсинки",
-      "up": true
-    },
-    {
-      "id": "fi-ru",
       "host": "ru-relay.example.com",
       "ports": [
         10001
@@ -54,7 +25,7 @@
       "sni": "fi.example.com",
       "cc": "FI",
       "country": "Финляндия",
-      "city": "через РУ",
+      "city": "Хельсинки",
       "up": true
     }
   ]

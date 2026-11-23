@@ -155,7 +155,8 @@
     const active = servers.find((x) => x.id === snap.serverId) || servers[0] || null;
     const st = snap.state;
     if (st === "connected") {
-      const ip = active && /^\d+\.\d+\.\d+\.\d+$/.test(active.city || "") ? active.city : "—";
+      const ip = active && active.exitIp && /^\d+\./.test(active.exitIp) ? active.exitIp
+        : (active && /^\d+\.\d+\.\d+\.\d+$/.test(active.city || "") ? active.city : "—");
       const ping = active && active.ping ? active.ping + " мс" : "—";
       return `${ip} · ${ping} · ${clock(snap.traffic.uptime)}`;
     }

@@ -751,15 +751,35 @@ namespace Veil
             if (ci > 0) int.TryParse(host.Substring(ci + 1), out port);
 
             LastPing = Probe.TcpPing(h, port, 4000);
-            string body = Probe.Get("ip-api.com", "/json/?fields=status,country,countryCode,query", 12000);
-            if (body != null)
+
+            // каскад поднимается дольше порта 443: если первый замер не удался — повторяем
+            for (int attempt = 0; attempt < 3 && string.IsNullOrEmpty(ExitIp); attempt++)
             {
+                if (attempt > 0) System.Threading.Thread.Sleep(4000);
+                string body = Probe.Get("ip-api.com", "/json/?fields=status,country,countryCode,query", 12000);
+                if (body == null) continue;
                 Cc = Json(body, "countryCode") ?? "";
                 Country = Json(body, "country") ?? "";
                 ExitIp = Json(body, "query") ?? "";
                 Profile p = Current;
-                if (p != null && Cc.Length == 2) { p.Cc = Cc; p.Country = Country; p.ExitIp = ExitIp; Store.Save(Profiles); }
+                if (p != null && Cc.Length == 2)
+                {
+                    p.ExitIp = ExitIp;
+                    if (p.Sub.Length == 0) { p.Cc = Cc; p.Country = Country; }   // у подписки страна из пула
+                    Store.Save(Profiles);
+                }
             }
+            // ip-api иногда не отвечает через каскад — берём IP из второго источника
+            if (string.IsNullOrEmpty(ExitIp))
+            {
+                string ip = Probe.Get("api.ipify.org", "/", 8000);
+                if (ip != null)
+                {
+                    ip = ip.Trim();
+                    if (ip.Length >= 7 && ip.IndexOf('.') > 0 && ip.Length < 20) ExitIp = ip;
+                }
+            }
+
             string probe = Probe.Get("example.com", "/", 12000);
             CheckOk = probe != null && probe.IndexOf("Example Domain", StringComparison.Ordinal) >= 0;
             CheckText = CheckOk ? "проверка ok · " + LastPing + " мс" : "нет ответа через туннель";
@@ -1588,7 +1608,8 @@ namespace Veil
                       ? (p.City.Length > 0 ? p.City : p.Sni)
                       : (p.ExitIp.Length > 0 ? p.ExitIp : "по IP-адресу"))).Append("\"")
                   .Append(",\"ping\":").Append(p == core.Current ? core.LastPing : 0)
-                  .Append(",\"load\":0,\"fav\":false,\"sub\":").Append(p.Sub.Length > 0 ? "true" : "false").Append("}");
+                  .Append(",\"load\":0,\"fav\":false,\"sub\":").Append(p.Sub.Length > 0 ? "true" : "false")
+                  .Append(",\"exitIp\":\"").Append(Esc(p.ExitIp)).Append("\"}");
             }
             string sid = core.Current != null ? core.Current.Server : "";
             sb.Append("],\"snapshot\":{");
