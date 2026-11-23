@@ -66,6 +66,35 @@ certbot certonly --standalone -d veil.example.com
 
 Автоустановка: `deploy/install.sh` (systemd, отдельный юзер, CAP_NET_BIND_SERVICE).
 
+### Ключи и права получателя
+
+Клиентский ключ — только PSK для туннеля. Получатель ключа не получает ни
+SSH-аккаунта, ни оболочки, ни sudo:
+
+- `veil` — системный пользователь с `nologin`; `install.sh` дополнительно
+  выкидывает его из группы `sudo`, если кто-то туда добавил;
+- `/opt/veil/keys.txt` — `root:veil 640`: сервис читает, писать может только root;
+- выдача/отзыв ключа — правка файла + `systemctl reload` (SIGHUP), соединения
+  не рвутся;
+- юнит в песочнице: `NoNewPrivileges`, `ProtectSystem=strict`, `PrivateDevices`,
+  `RestrictSUIDSGID`, `LockPersonality`, `ProtectKernel*`,
+  `RestrictAddressFamilies` (`systemd-analyze security` → 4.3 OK).
+
+Проверка на живом сервере: `sudo -u veil test -r keys.txt` — да,
+`sudo -u veil bash -c 'echo x >> keys.txt'` — нет,
+`ssh veil@127.0.0.1` — `Permission denied (publickey)`.
+
+### SSH к серверу через туннель
+
+Клиент поднимает SOCKS5 на `127.0.0.1:1080`. Если ходить на сервер напрямую
+нельзя или не хочется светить домашний IP:
+
+```bash
+ssh -o ProxyCommand="python tools/socksbridge.py %h %p" root@SERVER
+```
+
+`tools/socksbridge.py` — мост SOCKS5 → stdio, только stdlib.
+
 ## Клиент
 
 ```bash
