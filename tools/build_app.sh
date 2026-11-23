@@ -10,11 +10,12 @@ GOOS=linux  GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o dist/veil-client
 python tools/build_ui.py
 
 CSC=/c/Windows/Microsoft.NET/Framework64/v4.0.30319/csc.exe
+SEC=C:/Windows/Microsoft.NET/Framework64/v4.0.30319/System.Security.dll
 SSH=client\\win\\sshnet
 WEB=client\\win\\webview2
 
 "$CSC" /nologo /target:winexe /platform:x64 /codepage:65001 /win32icon:client\\win\\veil.ico /out:dist\\veil.exe \
-  /r:$WEB\\Microsoft.Web.WebView2.Core.dll /r:$WEB\\Microsoft.Web.WebView2.WinForms.dll \
+  /r:$SEC /r:$WEB\\Microsoft.Web.WebView2.Core.dll /r:$WEB\\Microsoft.Web.WebView2.WinForms.dll \
   /r:$SSH\\Renci.SshNet.dll /r:$SSH\\BouncyCastle.Cryptography.dll \
   /r:$SSH\\Microsoft.Bcl.AsyncInterfaces.dll /r:$SSH\\System.Memory.dll \
   /r:$SSH\\System.Buffers.dll /r:$SSH\\System.Runtime.CompilerServices.Unsafe.dll \

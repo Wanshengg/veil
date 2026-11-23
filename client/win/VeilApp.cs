@@ -44,9 +44,15 @@ namespace Veil
             AppDomain.CurrentDomain.AssemblyResolve += Resolve;
             try
             {
+                Settings.Load();
+                SshCreds.Load();             // данные SSH прошлого раза
                 SysProxy.RestoreIfStale();   // убрать висящий прокси прошлого запуска
                 ExtractAll();      // разложить DLL до первого обращения к WebView2
                 InitLoader();      // теперь тип CoreWebView2Environment доступен
+                string sshSave = ArgOf(Environment.GetCommandLineArgs(), "--ssh-save=");
+                if (sshSave.Length > 0) { SshCreds.Host = "h"; RunSshCredsTest(sshSave, true); return; }
+                string sshShow = ArgOf(Environment.GetCommandLineArgs(), "--ssh-show=");
+                if (sshShow.Length > 0) { RunSshCredsTest(sshShow, false); return; }
                 string srvTest = ArgOf(Environment.GetCommandLineArgs(), "--srv-test=");
                 if (srvTest.Length > 0) { RunServerTest(srvTest); return; }
                 Application.EnableVisualStyles();
@@ -71,6 +77,29 @@ namespace Veil
         {
             foreach (string a in args) if (a.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return a.Substring(prefix.Length);
             return "";
+        }
+
+        // Проверка сохранения данных SSH: --ssh-save="host|user|secret" пишет,
+        // --ssh-show="-" читает обратно и пишет в лог, что получилось.
+        static void RunSshCredsTest(string arg, bool save)
+        {
+            if (save)
+            {
+                string[] p = arg.Split('|');
+                SshCreds.Host = p.Length > 0 ? p[0] : "";
+                SshCreds.User = p.Length > 1 ? p[1] : "root";
+                SshCreds.Secret = p.Length > 2 ? p[2] : "";
+                SshCreds.Save();
+                Log("ssh-save: written host=" + SshCreds.Host + " user=" + SshCreds.User
+                    + " secretLen=" + SshCreds.Secret.Length);
+            }
+            else
+            {
+                SshCreds.Host = ""; SshCreds.User = ""; SshCreds.Secret = "";
+                bool ok = SshCreds.Load();
+                Log("ssh-show: ok=" + ok + " host=" + SshCreds.Host + " user=" + SshCreds.User
+                    + " secretLen=" + SshCreds.Secret.Length + " secret=" + SshCreds.Secret);
+            }
         }
 
         // Диагностика SSH/ключей без интерфейса: veil.exe --srv-test=C:\path\srv.txt
@@ -960,6 +989,32 @@ namespace Veil
             return dst;
         }
 
+        // Одно поле ввода: если это существующий файл — ключ, иначе пароль.
+        // Пустые host/user/secret подставляются из сохранённых данных.
+        SshTarget MakeTarget(string host, string port, string user, string secret)
+        {
+            host = (host ?? "").Trim();
+            user = (user ?? "").Trim();
+            secret = (secret ?? "").Trim();
+            if (host.Length == 0) host = SshCreds.Host;
+            if (user.Length == 0) user = SshCreds.User.Length > 0 ? SshCreds.User : "root";
+            if (secret.Length == 0) secret = SshCreds.Secret;
+
+            var t = new SshTarget { Host = host, Port = IntOr(port, SshCreds.Port > 0 ? SshCreds.Port : 22), User = user };
+            bool looksPath = secret.Contains("\\") || secret.Contains("/");
+            if (looksPath && File.Exists(secret)) t.KeyPath = secret;
+            else t.Password = secret;
+            return t;
+        }
+
+        void RememberSsh(SshTarget t, string secret)
+        {
+            if (t == null || t.Host.Length == 0) return;
+            SshCreds.Host = t.Host; SshCreds.User = t.User; SshCreds.Port = t.Port;
+            SshCreds.Secret = t.KeyPath.Length > 0 ? t.KeyPath : (secret ?? "");
+            SshCreds.Save();
+        }
+
         void OnMessage(object sender, CoreWebView2WebMessageReceivedEventArgs e)
         {
             string raw = e.WebMessageAsJson;
@@ -990,23 +1045,18 @@ namespace Veil
             else if (cmd == "onboard") { Settings.Onboarded = true; Settings.Save(); PushSafe(); }
             else if (cmd == "srv-install")
             {
-                srvTarget = new SshTarget {
-                    Host = Json(raw, "host").Trim(), Port = IntOr(Json(raw, "port"), 22),
-                    User = string.IsNullOrEmpty(Json(raw, "user")) ? "root" : Json(raw, "user").Trim(),
-                    Password = Json(raw, "pass"), KeyPath = Json(raw, "keyfile")
-                };
+                srvTarget = MakeTarget(Json(raw, "host"), Json(raw, "port"), Json(raw, "user"), Json(raw, "secret"));
+                if (srvTarget.Host.Length == 0) { srvStatus = "Укажи сервер"; PushSafe(); return; }
                 string domain = Json(raw, "domain").Trim();
                 srvHost = srvTarget.Host; srvUser = srvTarget.User;
+                srvEnteredSecret = (Json(raw, "secret") ?? "").Trim();
                 srvBusy = true; srvStatus = "Устанавливаю…"; srvKeys.Clear(); PushSafe();
                 ThreadPool.QueueUserWorkItem(delegate { DoInstall(domain); });
             }
             else if (cmd == "srv-connect")
             {
-                srvTarget = new SshTarget {
-                    Host = Json(raw, "host").Trim(), Port = IntOr(Json(raw, "port"), 22),
-                    User = string.IsNullOrEmpty(Json(raw, "user")) ? "root" : Json(raw, "user").Trim(),
-                    Password = Json(raw, "pass"), KeyPath = Json(raw, "keyfile")
-                };
+                srvTarget = MakeTarget(Json(raw, "host"), Json(raw, "port"), Json(raw, "user"), Json(raw, "secret"));
+                if (srvTarget.Host.Length == 0) { srvStatus = "Укажи сервер"; PushSafe(); return; }
                 srvHost = srvTarget.Host; srvUser = srvTarget.User;
                 srvBusy = true; srvStatus = "Подключаюсь по SSH…"; PushSafe();
                 ThreadPool.QueueUserWorkItem(delegate {
@@ -1016,12 +1066,20 @@ namespace Veil
                         {
                             srvKeys = ServerSetup.Keys(sc);
                             srvPin = ServerSetup.Pin(sc);
-                            srvStatus = "Подключено · ключей: " + srvKeys.Count;
+                            RememberSsh(srvTarget, Json(raw, "secret"));
+                            srvStatus = "Подключено · ключей: " + srvKeys.Count + " · данные сохранены";
                         }
                     }
                     catch (Exception ex) { srvStatus = SshError(ex); }
                     srvBusy = false; PushSafe();
                 });
+            }
+            else if (cmd == "srv-forget")
+            {
+                SshCreds.Clear();
+                srvTarget = null; srvKeys.Clear(); srvHost = ""; srvUser = "";
+                srvStatus = "Данные SSH забыты";
+                PushSafe();
             }
             else if (cmd == "srv-keys")
             {
@@ -1243,7 +1301,7 @@ namespace Veil
         }
 
         SshTarget srvTarget = null;
-        string srvHost = "", srvUser = "", srvPin = "", srvStatus = "";
+        string srvHost = "", srvUser = "", srvPin = "", srvStatus = "", srvEnteredSecret = "";
         List<string> srvKeys = new List<string>();
         bool srvBusy = false;
 
@@ -1295,6 +1353,7 @@ namespace Veil
                         core.Selected = core.Profiles.Count - 1;
                     }
                     srvKeys = ServerSetup.Keys(sc);
+                    RememberSsh(srvTarget, srvEnteredSecret);
                     srvStatus = "Сервер готов · ключей: " + srvKeys.Count + (pin.Length > 0 ? " · сертификат по отпечатку" : " · Let's Encrypt");
                     keyMsg = "Ключ добавлен на главную";
                 }
@@ -1367,7 +1426,9 @@ namespace Veil
             sb.Append(",\"onboarded\":").Append(Settings.Onboarded ? "true" : "false");
             sb.Append(",\"srvStatus\":\"").Append(Esc(srvStatus)).Append("\"");
             sb.Append(",\"srvBusy\":").Append(srvBusy ? "true" : "false");
-            sb.Append(",\"srvHost\":\"").Append(Esc(srvHost)).Append("\",\"srvUser\":\"").Append(Esc(srvUser)).Append("\"");
+            sb.Append(",\"srvHost\":\"").Append(Esc(srvHost.Length > 0 ? srvHost : SshCreds.Host))
+              .Append("\",\"srvUser\":\"").Append(Esc(srvUser.Length > 0 ? srvUser : (SshCreds.User.Length > 0 ? SshCreds.User : "root")))
+              .Append("\",\"srvSaved\":").Append(SshCreds.Has ? "true" : "false");
             sb.Append(",\"srvKeys\":[");
             for (int i = 0; i < srvKeys.Count; i++) { if (i > 0) sb.Append(','); sb.Append("\"").Append(Esc(srvKeys[i])).Append("\""); }
             sb.Append("]");

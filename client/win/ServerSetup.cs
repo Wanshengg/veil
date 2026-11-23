@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using System.Security.Cryptography;
 using Renci.SshNet;
 
 namespace Veil
@@ -136,7 +137,9 @@ namespace Veil
         {
             string psk = RandomPsk();
             string n = Safe(name);
-            Run(c, "printf '%s:%s\\n' " + Quote(n) + " " + Quote(psk) + " >> /opt/veil/keys.txt && chmod 600 /opt/veil/keys.txt && systemctl reload veil");
+            Run(c, "printf '%s:%s\\n' " + Quote(n) + " " + Quote(psk) + " >> /opt/veil/keys.txt.tmp"
+                + " && cat /opt/veil/keys.txt.tmp >> /opt/veil/keys.txt && rm -f /opt/veil/keys.txt.tmp"
+                + " && chown root:veil /opt/veil/keys.txt && chmod 640 /opt/veil/keys.txt && systemctl reload veil");
             return Encode(host + ":" + port + "|" + (string.IsNullOrEmpty(sni) ? host : sni) + "|chrome|" + psk, pin);
         }
 
@@ -161,5 +164,67 @@ namespace Veil
         }
 
         static string Quote(string s) { return "'" + (s ?? "").Replace("'", "'\\''") + "'"; }
+    }
+}
+
+namespace Veil
+{
+    // Данные SSH, сохранённые между запусками. Хост и логин лежат открыто,
+    // секрет (пароль или путь к ключу) — через DPAPI, то есть расшифровать
+    // их может только этот же пользователь Windows на этой машине.
+    public static class SshCreds
+    {
+        public static string Host = "", User = "", Secret = "";
+        public static int Port = 22;
+
+        static string FilePath
+        {
+            get
+            {
+                string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "veil");
+                return Path.Combine(dir, "ssh.dat");
+            }
+        }
+
+        public static bool Has { get { return Host.Length > 0; } }
+
+        public static void Save()
+        {
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(FilePath));
+                string text = "host=" + Host + "\nport=" + Port + "\nuser=" + User + "\nsecret=" + Secret + "\n";
+                byte[] enc = ProtectedData.Protect(Encoding.UTF8.GetBytes(text), null, DataProtectionScope.CurrentUser);
+                File.WriteAllBytes(FilePath, enc);
+            }
+            catch (Exception ex) { Program.Log("ssh save: " + ex.Message); }
+        }
+
+        public static bool Load()
+        {
+            try
+            {
+                if (!File.Exists(FilePath)) return false;
+                byte[] raw = ProtectedData.Unprotect(File.ReadAllBytes(FilePath), null, DataProtectionScope.CurrentUser);
+                foreach (string line in Encoding.UTF8.GetString(raw).Split('\n'))
+                {
+                    int i = line.IndexOf('=');
+                    if (i < 0) continue;
+                    string k = line.Substring(0, i).Trim(), v = line.Substring(i + 1).Trim();
+                    if (k == "host") Host = v;
+                    else if (k == "user") User = v;
+                    else if (k == "secret") Secret = v;
+                    else if (k == "port") { int p; if (int.TryParse(v, out p)) Port = p; }
+                }
+                return Host.Length > 0;
+            }
+            catch (Exception ex) { Program.Log("ssh load: " + ex.Message); return false; }
+        }
+
+        public static void Clear()
+        {
+            Host = ""; User = ""; Secret = ""; Port = 22;
+            try { if (File.Exists(FilePath)) File.Delete(FilePath); } catch (Exception ex) { Program.Log("ssh clear: " + ex.Message); }
+        }
     }
 }

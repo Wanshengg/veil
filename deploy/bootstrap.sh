@@ -76,6 +76,12 @@ else
 fi
 chown -R veil:veil /opt/veil/certs
 
+# ключи клиентов: root:veil 640 — сервис читает, менять может только root
+[ -f /opt/veil/keys.txt ] || : > /opt/veil/keys.txt
+chown root:veil /opt/veil/keys.txt
+chmod 640 /opt/veil/keys.txt
+usermod -s /usr/sbin/nologin veil 2>/dev/null || true
+
 say "unit"
 cat >/etc/systemd/system/veil.service <<UNIT
 [Unit]
@@ -91,12 +97,20 @@ ExecStart=/opt/veil/veil-server -addr :$(echo "$PORTS" | sed 's/,/,:/g; s/^/:/')
   -key /opt/veil/certs/privkey.pem \\
   -psks /opt/veil/keys.txt \\
   -fallback $FALLBACK
+ExecReload=/bin/kill -HUP $MAINPID
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+ReadOnlyPaths=/opt/veil
 Restart=always
 RestartSec=3
 ExecReload=/bin/kill -HUP \$MAINPID

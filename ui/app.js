@@ -143,7 +143,7 @@
       keyPaste() { snap.keyMsg = "Макет: ключ из буфера не читается"; emit(); },
       keyAdd() {},
       srvConnect() { snap.srvStatus = "Макет: SSH недоступен"; emit(); },
-      srvInstall() {}, srvKeys() {}, srvIssue() {}, srvRevoke() {}
+      srvInstall() {}, srvKeys() {}, srvIssue() {}, srvRevoke() {}, srvForget() {}
     };
   })();
 
@@ -356,10 +356,10 @@
   const viewServer = (snap) => {
     const busy = !!snap.srvBusy;
     const keys = snap.srvKeys || [];
-    const field = (id, label, ph, type) => `
+    const field = (id, label, ph, type, value) => `
       <label class="field">
         <span class="caps">${esc(label)}</span>
-        <input id="${id}" type="${type || "text"}" placeholder="${esc(ph)}" spellcheck="false" autocomplete="off" ${busy ? "disabled" : ""}>
+        <input id="${id}" type="${type || "text"}" placeholder="${esc(ph)}" value="${esc(value || "")}" spellcheck="false" autocomplete="off" ${busy ? "disabled" : ""}>
       </label>`;
 
     return `
@@ -368,12 +368,17 @@
 
       <div class="group">
         <div class="caps">Сервер по SSH</div>
-        ${field("srvHost", "Сервер", "203.0.113.10 или домен")}
-        ${field("srvPort", "Порт", "22", "number")}
-        ${field("srvUser", "Пользователь", "root")}
-        ${field("srvPass", "Пароль", "пароль или путь к ключу", "password")}
-        ${field("srvKey", "Путь к ключу", "C:\\Users\\you\\.ssh\\id_ed25519")}
+        ${field("srvHost", "Сервер", "203.0.113.10 или домен", "text", snap.srvHost)}
+        ${field("srvPort", "Порт", "22", "number", "22")}
+        ${field("srvUser", "Пользователь", "root", "text", snap.srvUser)}
+        ${field("srvSecret", "Пароль или путь к ключу",
+          snap.srvSaved ? "сохранено — оставь пустым" : "пароль или C:\\Users\\you\\.ssh\\id_ed25519")}
         ${field("srvDomain", "Домен для сертификата", "необязательно")}
+        ${snap.srvSaved
+          ? `<div class="row clickable" data-action="srv-forget">
+               <span class="t">Данные SSH сохранены</span><span class="v">Забыть ›</span>
+             </div>`
+          : ""}
         <div class="actions">
           <button class="btn filled" data-action="srv-install" ${busy ? "disabled" : ""}>Установить сервер</button>
           <button class="btn outline" data-action="srv-connect" ${busy ? "disabled" : ""}>Только подключиться</button>
@@ -393,6 +398,7 @@
         <div class="actions">
           <button class="btn outline" data-action="srv-issue" ${busy ? "disabled" : ""}>Выдать ключ</button>
         </div>
+        <p class="msg">Ключ даёт только туннель: у получателя нет ни SSH, ни оболочки, ни sudo.</p>
       </div>
     </section>`;
   };
@@ -563,7 +569,7 @@
       const val = (id) => { const el = document.getElementById(id); return el ? el.value.trim() : ""; };
       const cfg = {
         host: val("srvHost"), port: val("srvPort") || "22", user: val("srvUser") || "root",
-        pass: val("srvPass"), keyfile: val("srvKey"), domain: val("srvDomain")
+        secret: val("srvSecret"), domain: val("srvDomain")
       };
       if (!cfg.host) return;
       if (a === "srv-install") adapter.srvInstall(cfg); else adapter.srvConnect(cfg);
@@ -576,6 +582,7 @@
       return;
     }
     if (a === "srv-revoke") return adapter.srvRevoke(el.dataset.name || "");
+    if (a === "srv-forget") return adapter.srvForget();
   });
 
   document.addEventListener("change", (e) => {

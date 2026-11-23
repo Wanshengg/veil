@@ -55,12 +55,13 @@
     keyPaste: () => post({ cmd: "key-paste" }),
     keyAdd: (key) => post({ cmd: "key-add", key }),
     srvInstall: (cfg) => post({ cmd: "srv-install", host: cfg.host, port: String(cfg.port), user: cfg.user,
-                                pass: cfg.pass, keyfile: cfg.keyfile, domain: cfg.domain }),
+                                secret: cfg.secret, domain: cfg.domain }),
     srvConnect: (cfg) => post({ cmd: "srv-connect", host: cfg.host, port: String(cfg.port), user: cfg.user,
-                                pass: cfg.pass, keyfile: cfg.keyfile }),
+                                secret: cfg.secret }),
     srvKeys: () => post({ cmd: "srv-keys" }),
     srvIssue: (name) => post({ cmd: "srv-issue", name }),
     srvRevoke: (name) => post({ cmd: "srv-revoke", name }),
+    srvForget: () => post({ cmd: "srv-forget" }),
   };
   if (window.VEIL_UI) window.VEIL_UI.setAdapter(host);
 })();
