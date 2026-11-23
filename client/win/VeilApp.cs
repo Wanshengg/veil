@@ -51,6 +51,10 @@ namespace Veil
                 InitLoader();      // теперь тип CoreWebView2Environment доступен
                 // диагностика: несколько кликов подряд, через ;
                 string clicks = ArgOf(Environment.GetCommandLineArgs(), "--clicks=");
+                string subTest = ArgOf(Environment.GetCommandLineArgs(), "--sub-test=");
+                if (subTest.Length > 0) { RunSubTest(subTest, false); return; }
+                string subAdd = ArgOf(Environment.GetCommandLineArgs(), "--sub-add=");
+                if (subAdd.Length > 0) { RunSubTest(subAdd, true); return; }
                 string jsonTest = ArgOf(Environment.GetCommandLineArgs(), "--json-test=");
                 if (jsonTest.Length > 0)
                 {
@@ -87,6 +91,42 @@ namespace Veil
         {
             foreach (string a in args) if (a.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return a.Substring(prefix.Length);
             return "";
+        }
+
+        // Проверка подписки без интерфейса: veil.exe --sub-test=<ключ или файл с ключом>
+        // --sub-add добавляет серверы в profiles.txt.
+        static void RunSubTest(string arg, bool apply)
+        {
+            try
+            {
+                string key = arg.Trim();
+                if (File.Exists(key)) key = File.ReadAllText(key).Trim();
+                KeyInfo ki = KeyInfo.Parse(key);
+                if (ki == null) { Log("sub-test: ключ не распознан"); return; }
+                Log("sub-test: v2=" + ki.IsV2 + " sub=" + ki.Sub + " seed=" + ki.Seed + " pskLen=" + ki.Psk.Length);
+
+                string used;
+                PoolDoc doc = PoolClient.Fetch(ki.Subs, ki.Psk, ki.Pin, out used);
+                Log("sub-test: пул " + (doc.Name.Length > 0 ? doc.Name : "?") + " от " + doc.Issued + " · серверов " + doc.Servers.Count + " · url " + used);
+                foreach (PoolServer s in doc.Servers)
+                    Log("sub-test:   " + s.Id + " " + s.Endpoint + " [" + string.Join(",", s.Ports.ConvertAll(x => x.ToString()).ToArray()) + "] " + s.Cc + " " + s.Country + (s.Up ? "" : " (down)"));
+
+                List<Profile> list = Subs.Build(key, ki, doc);
+                Log("sub-test: профилей " + list.Count);
+
+                if (apply)
+                {
+                    List<Profile> existing = Store.Load();
+                    int added = 0;
+                    foreach (Profile p in list)
+                        if (!existing.Exists(x => string.Equals(x.Server, p.Server, StringComparison.OrdinalIgnoreCase)))
+                        { existing.Add(p); added++; }
+                    Store.Save(existing);
+                    Log("sub-add: добавлено " + added + ", всего " + existing.Count);
+                    foreach (Profile p in existing) Log("sub-add:   " + p.Sub + " " + p.Server + " " + p.Cc);
+                }
+            }
+            catch (Exception ex) { Log("sub-test: ОШИБКА " + ex.Message); }
         }
 
         // Проверка сохранения данных SSH: --ssh-save="host|user|secret" пишет,
@@ -235,6 +275,8 @@ namespace Veil
     {
         public string Key = "", Server = "", Sni = "", Fp = "chrome", Psk = "", Pin = "";
         public string Cc = "", Country = "", ExitIp = "";
+        public string Sub = "";          // id подписки, если сервер пришёл из пула
+        public int[] Ports = null;       // порты из пула, по порядку
         public int Ping;
         public string Title
         {
@@ -265,6 +307,10 @@ namespace Veil
                 if (f.Length > 2) p.Country = f[2];
                 if (f.Length > 3) p.ExitIp = f[3];
                 if (f.Length > 4) p.Pin = f[4].Trim();
+                if (f.Length > 5) p.Sub = f[5].Trim();
+                if (f.Length > 6 && f[6].Trim().Length > 0) p.Server = f[6].Trim();
+                if (f.Length > 7 && f[7].Trim().Length > 0)
+                    p.Ports = Array.ConvertAll(f[7].Trim().Split(','), x => int.Parse(x.Trim()));
                 list.Add(p);
             }
             return list;
@@ -273,7 +319,10 @@ namespace Veil
         public static void Save(List<Profile> list)
         {
             StringBuilder sb = new StringBuilder();
-            foreach (Profile p in list) sb.AppendLine(p.Key + "\t" + p.Cc + "\t" + p.Country + "\t" + p.ExitIp + "\t" + p.Pin);
+            foreach (Profile p in list)
+                sb.AppendLine(p.Key + "\t" + p.Cc + "\t" + p.Country + "\t" + p.ExitIp + "\t" + p.Pin +
+                              "\t" + p.Sub + "\t" + p.Server +
+                              "\t" + (p.Ports == null ? "" : string.Join(",", Array.ConvertAll(p.Ports, x => x.ToString()))));
             File.WriteAllText(File2, sb.ToString(), new UTF8Encoding(false));
         }
     }
@@ -354,25 +403,16 @@ namespace Veil
     {
         public static Profile ToProfile(string key)
         {
-            if (string.IsNullOrEmpty(key)) return null;
-            int i = key.IndexOf("veil://", StringComparison.OrdinalIgnoreCase);
-            if (i < 0) return null;
-            string b = key.Substring(i + 7).Trim().Replace('-', '+').Replace('_', '/');
-            while (b.Length % 4 != 0) b += "=";
-            try
-            {
-                string[] p = Encoding.UTF8.GetString(Convert.FromBase64String(b)).Split('|');
-                if (p.Length < 4 || p[0].Length == 0 || p[3].Length < 8) return null;
-                Profile x = new Profile();
-                x.Key = key.Trim();
-                x.Server = p[0];
-                x.Sni = p[1].Length > 0 ? p[1] : p[0].Split(':')[0];
-                x.Fp = p[2].Length > 0 ? p[2] : "chrome";
-                x.Psk = p[3];
-                if (p.Length > 4) x.Pin = p[4].Trim();
-                return x;
-            }
-            catch { return null; }
+            KeyInfo ki = KeyInfo.Parse(key);
+            if (ki == null || ki.Server.Length == 0) return null;
+            Profile x = new Profile();
+            x.Key = key.Trim();
+            x.Server = ki.Server;
+            x.Sni = ki.Sni;
+            x.Fp = ki.Fp;
+            x.Psk = ki.Psk;
+            x.Pin = ki.Pin;
+            return x;
         }
     }
 
@@ -928,6 +968,19 @@ namespace Veil
                             if (openTab.Length > 0)
                                 await web.CoreWebView2.ExecuteScriptAsync(
                                     "document.querySelector('.tab[data-tab=" + openTab + "]').click()");
+                            // диагностика: выбрать профиль по индексу и подключиться
+                            string pickArg = Program.ArgOf(Environment.GetCommandLineArgs(), "--pick=");
+                            if (pickArg.Length > 0)
+                            {
+                                int idx;
+                                if (int.TryParse(pickArg, out idx) && idx >= 0 && idx < core.Profiles.Count)
+                                {
+                                    core.Selected = idx;
+                                    Program.Log("debug pick: " + idx + " " + core.Profiles[idx].Server + " sub=" + core.Profiles[idx].Sub);
+                                    ThreadPool.QueueUserWorkItem(delegate { core.OpenTunnel(); BeginInvoke(new MethodInvoker(Push)); });
+                                }
+                                else Program.Log("debug pick: индекса " + pickArg + " нет (профилей " + core.Profiles.Count + ")");
+                            }
                             // несколько кликов подряд: --clicks=[data-action=settings];[data-action=server]
                             string clicksArg = Program.ArgOf(Environment.GetCommandLineArgs(), "--clicks=");
                             if (clicksArg.Length > 0)
@@ -961,6 +1014,7 @@ namespace Veil
                     };
                     probeTimer.Start();
                     Program.Log("step: navigate done");
+            StartSubRefresh();                     // подписки: сразу и потом раз в 6 часов
 
                     bool pasteKey = false;
                     foreach (string a0 in Environment.GetCommandLineArgs()) if (a0 == "--paste-key") pasteKey = true;
@@ -1110,6 +1164,16 @@ namespace Veil
                     }
                     catch (Exception ex) { srvStatus = SshError(ex); }
                     srvBusy = false; PushSafe();
+                });
+            }
+            else if (cmd == "sub-refresh")
+            {
+                ThreadPool.QueueUserWorkItem(delegate {
+                    int added, dropped;
+                    string err = Subs.Refresh(core.Profiles, out added, out dropped);
+                    if (added > 0 || dropped > 0) Store.Save(core.Profiles);
+                    Program.Log("subs manual: +" + added + " -" + dropped + " " + err);
+                    PushSafe();
                 });
             }
             else if (cmd == "srv-forget")
@@ -1321,6 +1385,17 @@ namespace Veil
             if (string.IsNullOrWhiteSpace(text) || text.IndexOf("veil://", StringComparison.OrdinalIgnoreCase) < 0)
             { keyMsg = "В буфере нет ключа veil://"; PushSafe(); return; }
 
+            KeyInfo ki = KeyInfo.Parse(text);
+
+            // Ключ подписки: один ключ — несколько серверов из пула.
+            if (ki != null && ki.IsV2 && ki.Sub.Length > 0)
+            {
+                keyMsg = "Загружаю список серверов…"; PushSafe();
+                string raw = text;
+                ThreadPool.QueueUserWorkItem(delegate { AddSubscription(raw); });
+                return;
+            }
+
             Profile p = Codec.ToProfile(text);
             if (p == null) { keyMsg = "Ключ не распознан — проверь, что скопирован целиком"; PushSafe(); return; }
 
@@ -1340,6 +1415,82 @@ namespace Veil
             Store.Save(core.Profiles);
             keyMsg = "Добавлено: " + p.Server;
             PushSafe();
+        }
+
+        // Развернуть ключ подписки в профили. Пул недоступен — остаётся seed из ключа.
+        void AddSubscription(string rawKey)
+        {
+            try
+            {
+                KeyInfo ki = KeyInfo.Parse(rawKey);
+                if (ki == null) { keyMsg = "Ключ подписки не распознан"; PushSafe(); return; }
+
+                PoolDoc doc = null;
+                string err = "";
+                try { string used; doc = PoolClient.Fetch(ki.Subs, ki.Psk, ki.Pin, out used); }
+                catch (Exception ex) { err = ex.Message; }
+
+                List<Profile> add = new List<Profile>();
+                if (doc != null)
+                {
+                    add = Subs.Build(rawKey, ki, doc);
+                    if (add.Count == 0) { keyMsg = "В пуле нет доступных серверов"; PushSafe(); return; }
+                }
+
+                int fresh = 0;
+                foreach (Profile np in add)
+                {
+                    if (core.Profiles.Exists(x => string.Equals(x.Server, np.Server, StringComparison.OrdinalIgnoreCase))) continue;
+                    core.Profiles.Add(np); fresh++;
+                }
+
+                // пул не ответил — берём запасной сервер из ключа, чтобы ключ не был мёртвым
+                if (add.Count == 0 && ki.Seed.Length > 0)
+                {
+                    Profile seed = Codec.ToProfile(rawKey);
+                    if (seed != null)
+                    {
+                        seed.Pin = ki.Pin;
+                        if (!core.Profiles.Exists(x => string.Equals(x.Server, seed.Server, StringComparison.OrdinalIgnoreCase)))
+                        { core.Profiles.Add(seed); fresh++; }
+                    }
+                }
+
+                if (fresh > 0) core.Selected = core.Profiles.Count - 1;
+                Store.Save(core.Profiles);
+                keyMsg = fresh > 0
+                    ? "Добавлено серверов: " + fresh + (doc != null ? " · " + doc.Name : " · пул недоступен, один сервер")
+                    : (err.Length > 0 ? "Пул недоступен: " + err : "Эти серверы уже добавлены");
+            }
+            catch (Exception ex) { keyMsg = "Подписка: " + Short(ex); Program.Log("sub add: " + ex); }
+            PushSafe();
+        }
+
+        // Периодическое обновление подписок: при старте и раз в 6 часов.
+        void StartSubRefresh()
+        {
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                while (true)
+                {
+                    try
+                    {
+                        int added, dropped;
+                        string err = Subs.Refresh(core.Profiles, out added, out dropped);
+                        if (added > 0 || dropped > 0)
+                        {
+                            Store.Save(core.Profiles);
+                            if (core.Selected >= core.Profiles.Count) core.Selected = core.Profiles.Count - 1;
+                            Program.Log("subs refresh: +" + added + " -" + dropped);
+                        }
+                        if (err.Length > 0) Program.Log("subs refresh: " + err);
+                        else Program.Log("subs refresh: +" + added + " -" + dropped + " (всего " + core.Profiles.Count + ")");
+                        PushSafe();
+                    }
+                    catch (Exception ex) { Program.Log("subs refresh: " + ex.Message); }
+                    System.Threading.Thread.Sleep(6 * 60 * 60 * 1000);
+                }
+            });
         }
 
         SshTarget srvTarget = null;
@@ -1432,9 +1583,9 @@ namespace Veil
                 sb.Append("{\"id\":\"").Append(Esc(p.Server)).Append("\"")
                   .Append(",\"cc\":\"").Append(Esc(p.Cc.Length > 0 ? p.Cc : "IP")).Append("\"")
                   .Append(",\"country\":\"").Append(Esc(p.Country.Length > 0 ? p.Country : "По IP")).Append("\"")
-                  .Append(",\"city\":\"").Append(Esc(p.ExitIp.Length > 0 ? p.ExitIp : "по IP-адресу")).Append("\"")
+                  .Append(",\"city\":\"").Append(Esc(p.ExitIp.Length > 0 ? p.ExitIp : (p.Sub.Length > 0 ? p.Sni : "по IP-адресу"))).Append("\"")
                   .Append(",\"ping\":").Append(p == core.Current ? core.LastPing : 0)
-                  .Append(",\"load\":0,\"fav\":false}");
+                  .Append(",\"load\":0,\"fav\":false,\"sub\":").Append(p.Sub.Length > 0 ? "true" : "false").Append("}");
             }
             string sid = core.Current != null ? core.Current.Server : "";
             sb.Append("],\"snapshot\":{");

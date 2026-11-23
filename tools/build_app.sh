@@ -37,6 +37,6 @@ WEB=client\\win\\webview2
   /resource:$WEB\\Microsoft.Web.WebView2.Core.dll,Microsoft.Web.WebView2.Core.dll \
   /resource:$WEB\\Microsoft.Web.WebView2.WinForms.dll,Microsoft.Web.WebView2.WinForms.dll \
   /resource:$WEB\\WebView2Loader.dll,WebView2Loader.dll \
-  client\\win\\VeilApp.cs client\\win\\ServerSetup.cs
+  client\\\\win\\\\VeilApp.cs client\\\\win\\\\ServerSetup.cs client\\\\win\\\\Pool.cs client\\\\win\\\\PoolCodec.cs
 
 echo "built: $(du -h dist/veil.exe | cut -f1)"

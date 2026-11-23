@@ -143,7 +143,7 @@
       keyPaste() { snap.keyMsg = "Макет: ключ из буфера не читается"; emit(); },
       keyAdd() {},
       srvConnect() { snap.srvStatus = "Макет: SSH недоступен"; emit(); },
-      srvInstall() {}, srvKeys() {}, srvIssue() {}, srvRevoke() {}, srvForget() {}
+      srvInstall() {}, srvKeys() {}, srvIssue() {}, srvRevoke() {}, srvForget() {}, refreshSubs() {}
     };
   })();
 
@@ -261,7 +261,7 @@
           <span class="mark">${isActive ? "<i></i>" : ""}</span>
           <span>
             <span class="name">${esc(c ? c.name : s.country)}</span>
-            <span class="country">${esc(/^\d+\./.test(s.city) ? s.city : s.country)}</span>
+            <span class="country">${esc(/^\d+\./.test(s.city) ? s.city : (s.sub ? s.city : s.country))}</span>
           </span>
           <span class="ping">${s.ping ? s.ping : "—"}</span>
         </button>`;
@@ -314,6 +314,7 @@
         <div class="row clickable" data-action="keys"><span class="t">Ключ из буфера</span><span class="v">›</span></div>
         <div class="row clickable" data-action="server"><span class="t">Сервер по SSH</span><span class="v">›</span></div>
         <div class="row clickable" data-action="cities"><span class="t">Серверы</span><span class="v">›</span></div>
+        <div class="row clickable" data-action="sub-refresh"><span class="t">Обновить подписку</span><span class="v">↻</span></div>
       </div>
 
       <div class="group">
@@ -545,6 +546,7 @@
     if (a === "server") return go("server");
     if (a === "logs") return openSheet("logs");
     if (a === "dns") return openSheet("dns");
+    if (a === "sub-refresh") return adapter.refreshSubs();
     if (a === "set-theme") {
       const value = el.dataset.value;
       try { localStorage.setItem(THEME_KEY, value); } catch (e) {}

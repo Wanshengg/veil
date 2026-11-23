@@ -1,0 +1,41 @@
+{
+  "v": 2,
+  "pool": "chis",
+  "issued": "2026-11-23T05:45:00Z",
+  "ttl": 21600,
+  "servers": [
+    {
+      "id": "es",
+      "host": "se.example.com",
+      "ports": [
+        8443,
+        443
+      ],
+      "sni": "se.example.com",
+      "cc": "ES",
+      "country": "Испания",
+      "up": true
+    },
+    {
+      "id": "nl",
+      "host": "nl.test-only.example",
+      "ports": [
+        8443
+      ],
+      "sni": "nl.test-only.example",
+      "cc": "NL",
+      "country": "Нидерланды",
+      "up": true
+    },
+    {
+      "id": "old",
+      "host": "old.test-only.example",
+      "ports": [
+        8443
+      ],
+      "cc": "DE",
+      "country": "Германия",
+      "up": false
+    }
+  ]
+}
