@@ -9,3 +9,4 @@ probe.out
 # тестовые ключи и артефакты пула
 pool/demo-key.txt
 pool/*.bak
+pool/subscription-key.txt
