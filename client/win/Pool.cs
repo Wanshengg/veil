@@ -219,7 +219,7 @@ namespace Veil
 
     public class PoolServer
     {
-        public string Id = "", Host = "", Sni = "", Cc = "", Country = "";
+        public string Id = "", Host = "", Sni = "", Cc = "", Country = "", City = "";
         public List<int> Ports = new List<int>();
         public bool Up = true;
 
@@ -257,6 +257,7 @@ namespace Veil
                     Sni = Json.S(so, "sni"),
                     Cc = Json.S(so, "cc"),
                     Country = Json.S(so, "country"),
+                    City = Json.S(so, "city"),
                     Up = Json.B(so, "up", true)
                 };
                 if (s.Sni.Length == 0) s.Sni = s.Host;
@@ -306,6 +307,7 @@ namespace Veil
                 p.Sub = subId;
                 p.Cc = s.Cc;
                 p.Country = s.Country;
+                p.City = s.City;
                 list.Add(p);
             }
             return list;

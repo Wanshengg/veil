@@ -276,6 +276,7 @@ namespace Veil
     {
         public string Key = "", Server = "", Sni = "", Fp = "chrome", Psk = "", Pin = "";
         public string Cc = "", Country = "", ExitIp = "";
+        public string City = "";         // подпись из пула: город или маршрут («через РУ»)
         public string Sub = "";          // id подписки, если сервер пришёл из пула
         public int[] Ports = null;       // порты из пула, по порядку
         public int Ping;
@@ -312,6 +313,7 @@ namespace Veil
                 if (f.Length > 6 && f[6].Trim().Length > 0) p.Server = f[6].Trim();
                 if (f.Length > 7 && f[7].Trim().Length > 0)
                     p.Ports = Array.ConvertAll(f[7].Trim().Split(','), x => int.Parse(x.Trim()));
+                if (f.Length > 8) p.City = f[8].Trim();
                 list.Add(p);
             }
             return list;
@@ -323,7 +325,8 @@ namespace Veil
             foreach (Profile p in list)
                 sb.AppendLine(p.Key + "\t" + p.Cc + "\t" + p.Country + "\t" + p.ExitIp + "\t" + p.Pin +
                               "\t" + p.Sub + "\t" + p.Server +
-                              "\t" + (p.Ports == null ? "" : string.Join(",", Array.ConvertAll(p.Ports, x => x.ToString()))));
+                              "\t" + (p.Ports == null ? "" : string.Join(",", Array.ConvertAll(p.Ports, x => x.ToString()))) +
+                              "\t" + p.City);
             File.WriteAllText(File2, sb.ToString(), new UTF8Encoding(false));
         }
     }
@@ -1581,7 +1584,9 @@ namespace Veil
                 sb.Append("{\"id\":\"").Append(Esc(p.Server)).Append("\"")
                   .Append(",\"cc\":\"").Append(Esc(p.Cc.Length > 0 ? p.Cc : "IP")).Append("\"")
                   .Append(",\"country\":\"").Append(Esc(p.Country.Length > 0 ? p.Country : "По IP")).Append("\"")
-                  .Append(",\"city\":\"").Append(Esc(p.ExitIp.Length > 0 ? p.ExitIp : (p.Sub.Length > 0 ? p.Sni : "по IP-адресу"))).Append("\"")
+                  .Append(",\"city\":\"").Append(Esc(p.Sub.Length > 0
+                      ? (p.City.Length > 0 ? p.City : p.Sni)
+                      : (p.ExitIp.Length > 0 ? p.ExitIp : "по IP-адресу"))).Append("\"")
                   .Append(",\"ping\":").Append(p == core.Current ? core.LastPing : 0)
                   .Append(",\"load\":0,\"fav\":false,\"sub\":").Append(p.Sub.Length > 0 ? "true" : "false").Append("}");
             }
