@@ -79,6 +79,63 @@ func NewRules(enabled bool, extraFile string, geo *geoip.DB) *Rules {
 	return r
 }
 
+// Private reports whether the destination is a local address that must never
+// leave the machine through a tunnel (router, printer, localhost).
+func (r *Rules) Private(hostport string) bool {
+	if r == nil {
+		return false
+	}
+	host := hostOf(hostport)
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	for _, n := range r.nets {
+		if n.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+// Russian reports whether the destination should leave through the RU exit:
+// российские IP-диапазоны или домены из списка.
+func (r *Rules) Russian(hostport string) bool {
+	if r == nil || !r.enabled {
+		return false
+	}
+	host := hostOf(hostport)
+	if ip := net.ParseIP(host); ip != nil {
+		for _, n := range r.nets {
+			if n.Contains(ip) {
+				return false // локальные адреса разбирает Private
+			}
+		}
+		return r.geo != nil && r.geo.Contains(ip)
+	}
+	for _, s := range r.suffixes {
+		if host == s || strings.HasSuffix(host, "."+s) {
+			return true
+		}
+	}
+	return false
+}
+
+func hostOf(hostport string) string {
+	host := hostport
+	if h, _, err := net.SplitHostPort(hostport); err == nil {
+		host = h
+	}
+	host = strings.ToLower(strings.Trim(host, "[]"))
+	if i := strings.IndexByte(host, ':'); i > 0 {
+		host = host[:i]
+	}
+	return strings.TrimSuffix(host, ".")
+}
+
 // Direct reports whether the destination must be reached without the tunnel.
 func (r *Rules) Direct(hostport string) bool {
 	if r == nil || !r.enabled {

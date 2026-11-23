@@ -550,8 +550,19 @@ namespace Veil
             }
         }
 
+        // Российский выход: берём сервер из подписки с кодом страны RU.
+        public static string RuExitServer = "", RuExitSni = "";
+
         public static void WriteIni(Profile p)
         {
+            // Раздельного туннелирования больше нет: локальная сеть идёт напрямую,
+            // российские адреса — через РУ-сервер, остальное — через основной туннель.
+            string extra = "";
+            if (RuExitServer.Length > 0)
+                extra = "ru-exit = " + RuExitServer + "\n" +
+                        "ru-exit-sni = " + (RuExitSni.Length > 0 ? RuExitSni : RuExitServer.Split(':')[0]) + "\n" +
+                        "ru-exit-ports = 8443,2083,9443\n";
+
             File.WriteAllText(IniPath,
                 "server = " + p.Server + "\n" +
                 "sni    = " + p.Sni + "\n" +
@@ -559,7 +570,7 @@ namespace Veil
                 "socks  = 127.0.0.1:1080\n" +
                 "fp     = " + p.Fp + "\n" +
                 (p.Pin.Length > 0 ? "pin    = " + p.Pin + "\n" : "") +
-                "direct  = " + (Settings.Split ? "true" : "false") + "\n", new UTF8Encoding(false));
+                "direct  = true\n" + extra, new UTF8Encoding(false));
         }
 
         public static Process Start()
@@ -712,6 +723,18 @@ namespace Veil
             get { return Profiles.Count == 0 ? null : Profiles[Math.Max(0, Math.Min(Selected, Profiles.Count - 1))]; }
         }
 
+        // РУ-выход берём из подписки: сервер с кодом страны RU.
+        void ApplyRuExit(Profile current)
+        {
+            Profile ru = Profiles.Find(x => x.Cc == "RU");
+            // если сам туннель уже российский — отдельный выход не нужен
+            if (ru != null && current != null && string.Equals(ru.Server, current.Server, StringComparison.OrdinalIgnoreCase))
+                ru = null;
+            Engine.RuExitServer = ru != null ? ru.Server : "";
+            Engine.RuExitSni = ru != null ? ru.Sni : "";
+            if (ru != null) Program.Log("ru-exit: " + ru.Server + " (sni=" + ru.Sni + ")");
+        }
+
         public void OpenTunnel()
         {
             if (Profiles.Count == 0) { State = "error"; return; }
@@ -719,6 +742,7 @@ namespace Veil
             State = "connecting";
             try
             {
+                ApplyRuExit(p);
                 Engine.WriteIni(p);
                 Proc = Engine.Start();
                 if (!Engine.WaitListen(7000) || Proc.HasExited)

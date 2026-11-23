@@ -43,6 +43,7 @@ type cfg struct {
 	serverIPPin string
 	pin         string
 	directIP    net.IP
+	ru          *cfg     // выход для российских адресов (отдельный туннель)
 	candidates  []string // host:port, перебираем при блокировке порта
 	portIdx     int32    // индекс последнего рабочего порта (atomic) // адрес физического интерфейса для «прямых» соединений
 
@@ -119,6 +120,10 @@ func main() {
 	direct := flag.Bool("direct", true, "send Russian/local destinations straight to the internet (no tunnel)")
 	geo := flag.Bool("geoip", true, "match Russian IP ranges (works in TUN mode, where only IPs are visible)")
 	rulesFile := flag.String("rules", "", "extra direct-rule file: domains or CIDRs, one per line")
+	ruExit := flag.String("ru-exit", "", "RU exit host:port: Russian destinations leave the tunnel here")
+	ruExitSni := flag.String("ru-exit-sni", "", "SNI for the RU exit (default: host)")
+	ruExitPsk := flag.String("ru-exit-psk", "", "PSK for the RU exit (default: same as -psk)")
+	ruExitPorts := flag.String("ru-exit-ports", "", "ports to try on the RU exit (default: from -ports)")
 	cfgPath := flag.String("config", "", "optional key=value config file (flags win)")
 	tun := flag.Bool("tun", false, "route ALL system traffic through the tunnel (needs admin, wintun.dll)")
 	tunMTU := flag.Int("tun-mtu", 1400, "MTU of the TUN adapter (lower if the tunnel stalls)")
@@ -149,6 +154,29 @@ func main() {
 	c := &cfg{server: *server, sni: sniName, key: sum[:], insecure: *insecure, fp: *fp,
 		serverIPPin: *serverIP, pin: strings.ToLower(strings.TrimSpace(*pin)),
 		rules: rules.NewRules(*direct, *rulesFile, geoDB)}
+
+	// Российские адреса выпускаем через РУ-сервер: он видит их со своего IP,
+	// домашний адрес не светится, а сами сервера не получают «прямой» трафик.
+	if strings.TrimSpace(*ruExit) != "" {
+		rp := strings.TrimSpace(*ruExitPsk)
+		if rp == "" {
+			rp = *psk
+		}
+		rsum := sha256.Sum256([]byte(rp))
+		rsni := strings.TrimSpace(*ruExitSni)
+		if rsni == "" {
+			rsni = strings.Split(*ruExit, ":")[0]
+		}
+		rc := &cfg{server: strings.TrimSpace(*ruExit), sni: rsni, key: rsum[:], fp: *fp,
+			rules: rules.NewRules(false, "", nil), bad: map[string]time.Time{}}
+		rports := *ruExitPorts
+		if strings.TrimSpace(rports) == "" {
+			rports = *portList
+		}
+		rc.candidates = buildCandidates(rc.server, rports)
+		c.ru = rc
+		log.Printf("veil-client: RU-выход %s (sni=%s), российские адреса идут туда", rc.server, rc.sni)
+	}
 
 	if *probe != "" {
 		uc, err := dialTunnel(c, *probe, c.fp, 0)
@@ -408,9 +436,12 @@ func (c *cfg) dialDirect(target string) (net.Conn, error) {
 	return d.Dial("tcp", target)
 }
 
-// serve dials the destination (direct or through the tunnel) and splices bytes.
+// serve dials the destination and splices bytes:
+//  1. локальная сеть — напрямую (иначе ломаются принтеры, роутер, localhost);
+//  2. российские адреса — через РУ-сервер (виден его IP, а не домашний);
+//  3. остальное — через основной туннель.
 func serve(client net.Conn, br *bufio.Reader, target string, c *cfg) {
-	if c.rules != nil && c.rules.Direct(target) {
+	if c.rules != nil && c.rules.Private(target) {
 		up, err := c.dialDirect(target)
 		if err != nil {
 			log.Printf("direct %s: %v", target, err)
@@ -420,6 +451,17 @@ func serve(client net.Conn, br *bufio.Reader, target string, c *cfg) {
 		log.Printf("direct -> %s", target)
 		relayPlain(bufConn{Conn: client, r: br}, up)
 		return
+	}
+
+	if c.ru != nil && c.rules != nil && c.rules.Russian(target) {
+		uc, outKey, inKey, fp, err := openTunnel(c.ru, target)
+		if err == nil {
+			defer uc.Close()
+			log.Printf("ru-exit -> %s (fp=%s)", target, fp)
+			proto.Relay(bufConn{Conn: client, r: br}, uc, uc, outKey, inKey)
+			return
+		}
+		log.Printf("ru-exit %s: %v — идём общим туннелем", target, err)
 	}
 
 	uc, outKey, inKey, fp, err := openTunnel(c, target)

@@ -780,7 +780,7 @@ html:not(.ready) *, html:not(.ready) *::before, html:not(.ready) *::after {
         <div class="caps">Безопасность</div>
         <div class="row"><span class="t">Блокировать интернет при обрыве</span>${switchBtn(s.killSwitch, "set-kill", "Блокировать интернет при обрыве")}</div>
         <p class="note">Трафик встанет, пока туннель не восстановится</p>
-        <div class="row"><span class="t">RU-сайты напрямую</span>${switchBtn(s.split, "set-split", "RU-сайты напрямую")}</div>
+        ${row("РУ-трафик", "через РУ-сервер")}
       </div>
 
       <div class="group">
