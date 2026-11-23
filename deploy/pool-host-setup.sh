@@ -2,7 +2,9 @@
 # Раздатчик пула + потоковый релей на чистом Ubuntu/Debian VPS.
 # Запускать на самом сервере от root:
 #
-#   DOMAIN=pool.example.ru RELAY_PORT=10000 RELAY_TARGET=1.2.3.4:8443 bash pool-host-setup.sh
+#   DOMAIN=pool.example.ru RELAYS="10000=1.2.3.4:8443 10001=5.6.7.8:8443" bash pool-host-setup.sh
+#
+# RELAYS — пары «порт=адрес:порт». Можно несколько, можно без релея вовсе.
 #
 # Что делает:
 #   1. nginx + certbot + модуль stream;
@@ -12,8 +14,7 @@
 set -euo pipefail
 
 DOMAIN="${DOMAIN:?нужен DOMAIN}"
-RELAY_PORT="${RELAY_PORT:-10000}"
-RELAY_TARGET="${RELAY_TARGET:-}"
+RELAYS="${RELAYS:-}"
 WWW="${WWW:-/var/www/api}"
 
 export DEBIAN_FRONTEND=noninteractive
@@ -59,17 +60,23 @@ fi
 certbot --nginx -d "$DOMAIN" --agree-tos --register-unsafely-without-email --redirect --non-interactive 2>/dev/null || true
 
 # ── релей ───────────────────────────────────────────────────────────────
-if [ -n "$RELAY_TARGET" ]; then
+if [ -n "$RELAYS" ]; then
   mkdir -p /etc/nginx/stream.d
-  cat >/etc/nginx/stream.d/relay.conf <<CONF
-# релей: приём на $RELAY_PORT и передача в $RELAY_TARGET без расшифровки
+  {
+    echo "# релеи: приём на порту и передача без расшифровки"
+    for pair in $RELAYS; do
+      port="${pair%%=*}"
+      target="${pair#*=}"
+      cat <<CONF
 server {
-    listen $RELAY_PORT;
-    proxy_pass $RELAY_TARGET;
+    listen $port;
+    proxy_pass $target;
     proxy_connect_timeout 10s;
     proxy_timeout 1h;
 }
 CONF
+    done
+  } > /etc/nginx/stream.d/relay.conf
   if ! grep -q "stream.d" /etc/nginx/nginx.conf; then
     python3 - <<'PY'
 p = "/etc/nginx/nginx.conf"
@@ -88,5 +95,5 @@ systemctl reload nginx
 echo "---"
 echo "каталог блоба : $WWW/static/data"
 echo "сайт          : https://$DOMAIN/"
-[ -n "$RELAY_TARGET" ] && echo "релей         : :$RELAY_PORT → $RELAY_TARGET"
+[ -n "$RELAYS" ] && echo "релеи         : $RELAYS"
 echo "проверка      : curl -s -o /dev/null -w '%{http_code}\\n' https://$DOMAIN/"
