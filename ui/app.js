@@ -144,7 +144,7 @@
       keyAdd() {},
       srvConnect() { snap.srvStatus = "Макет: SSH недоступен"; emit(); },
       srvInstall() {}, srvKeys() {}, srvIssue() {}, srvRevoke() {}, srvForget() {}, refreshSubs() {}, profileDel() {},
-      poolAdd() {}, poolDel() {}, poolIssue() {}, clipWrite() {}
+      poolAdd() {}, poolDel() {}, poolIssue() {}, clipWrite() {}, poolKeys() {}, poolRevoke() {}
     };
   })();
 
@@ -457,6 +457,21 @@
       </div>
 
       <div class="group">
+        <div class="caps">Выданные ключи · ${(snap.poolNames || []).length}</div>
+        ${(snap.poolNames || []).length
+          ? (snap.poolNames || []).map((n) => `
+            <div class="row">
+              <span class="t">${esc(n)}</span>
+              <button class="x" data-action="pool-revoke" data-name="${esc(n)}" aria-label="Отозвать">×</button>
+            </div>`).join("")
+          : `<p class="msg">${snap.poolNamesBusy ? "Читаю серверы…" : "Ключей нет — только общий."}</p>`}
+        <div class="actions">
+          <button class="btn outline" data-action="pool-refresh" ${snap.poolNamesBusy ? "disabled" : ""}>${snap.poolNamesBusy ? "Читаю…" : "Обновить список"}</button>
+        </div>
+        <p class="msg">× снимает ключ со всех серверов и удаляет его личный список.</p>
+      </div>
+
+      <div class="group">
         <div class="caps">Выдать ключ подписки</div>
         <label class="field">
           <span class="caps">Имя человека</span>
@@ -544,7 +559,8 @@
       snap.srvInstalled ? 1 : 0, snap.srvSaved ? 1 : 0,
       (snap.srvKeys || []).join(","), servers.length,
       (snap.poolServers || []).map((h) => h.host + (h.publisher ? "*" : "") + (h.role || "")).join(","),
-      snap.poolKeyMsg || "", snap.poolKey || "", S.newRu ? 1 : 0, S.newPub ? 1 : 0
+      snap.poolKeyMsg || "", snap.poolKey || "", S.newRu ? 1 : 0, S.newPub ? 1 : 0,
+      (snap.poolNames || []).join(","), snap.poolNamesBusy ? 1 : 0
     ].join("|");
 
     if (key !== S.lastKey) {
@@ -665,7 +681,13 @@
     if (a === "srv-revoke") return adapter.srvRevoke(el.dataset.name || "");
     if (a === "srv-forget") return adapter.srvForget();
     if (a === "pool-publisher") { S.poolPublisher = !S.poolPublisher; S.lastKey = ""; return render(); }
-    if (a === "myservers") { S.screen = "myservers"; return render(); }
+    if (a === "myservers") {
+      S.screen = "myservers";
+      if (!S.namesAsked) { S.namesAsked = true; adapter.poolKeys(); }
+      return render();
+    }
+    if (a === "pool-refresh") return adapter.poolKeys();
+    if (a === "pool-revoke") return adapter.poolRevoke(el.dataset.name || "");
     if (a === "newserver") { S.screen = "server"; return render(); }
     if (a === "new-ru") { S.newRu = !S.newRu; S.lastKey = ""; return render(); }
     if (a === "new-pub") { S.newPub = !S.newPub; S.lastKey = ""; return render(); }

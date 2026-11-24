@@ -64,6 +64,23 @@ namespace Veil
                     }
                     return;
                 }
+                string revName = ArgOf(Environment.GetCommandLineArgs(), "--pool-revoke=");
+                if (revName.Length > 0)
+                {
+                    List<PoolHost> hosts = PoolRegistry.Load();
+                    PoolIssue.Result rr = PoolIssue.Revoke(revName, hosts, hosts.Find(x => x.IsPublisher), "");
+                    Program.Log("pool-revoke: " + rr.Log.Replace("\n", " | "));
+                    return;
+                }
+                string namesArg = ArgOf(Environment.GetCommandLineArgs(), "--pool-keys");
+                if (namesArg.Length > 0)
+                {
+                    List<PoolHost> hosts = PoolRegistry.Load();
+                    string lg;
+                    List<string> ns = PoolIssue.NamesOnServers(hosts, hosts.Find(x => x.IsPublisher), "", out lg);
+                    Program.Log("pool-keys: " + string.Join(",", ns.ToArray()) + " | " + lg.Replace("\n", " | "));
+                    return;
+                }
                 string issueCfg = ArgOf(Environment.GetCommandLineArgs(), "--pool-issue=");
                 if (issueCfg.Length > 0) { RunPoolIssue(issueCfg); return; }
                 string delArg = ArgOf(Environment.GetCommandLineArgs(), "--del=");
@@ -1388,6 +1405,49 @@ namespace Veil
                 poolKeyMsg = n > 0 ? "Удалён из подписки: " + host : "Такого сервера нет";
                 PushSafe();
             }
+            else if (cmd == "pool-keys")
+            {
+                if (poolNamesBusy) return;
+                List<PoolHost> hosts = poolHosts;
+                PoolHost pub2 = hosts.Find(x => x.IsPublisher);
+                poolNamesBusy = true; PushSafe();
+                ThreadPool.QueueUserWorkItem(delegate {
+                    try
+                    {
+                        string log;
+                        List<string> names = PoolIssue.NamesOnServers(hosts, pub2, "", out log);
+                        poolNames = names;
+                        Program.Log("pool-keys: " + names.Count + " шт. | " + log.Replace("\n", " | "));
+                        poolKeyMsg = names.Count == 0 ? "На серверах нет отдельных ключей (только default)" : "";
+                    }
+                    catch (Exception ex) { poolKeyMsg = "Ошибка чтения ключей: " + ex.Message; }
+                    poolNamesBusy = false;
+                    PushSafe();
+                });
+            }
+            else if (cmd == "pool-revoke")
+            {
+                string who = Json(raw, "name") ?? "";
+                if (who.Trim().Length == 0) { poolKeyMsg = "Нужно имя ключа"; PushSafe(); return; }
+                List<PoolHost> hosts = poolHosts;
+                PoolHost pub3 = hosts.Find(x => x.IsPublisher);
+                poolKeyMsg = "Отзываю «" + who + "»…"; poolIssuedKey = ""; PushSafe();
+                ThreadPool.QueueUserWorkItem(delegate {
+                    try
+                    {
+                        PoolIssue.Result r = PoolIssue.Revoke(who, hosts, pub3, "");
+                        Program.Log("pool-revoke: " + r.Log.Replace("\n", " | "));
+                        poolKeyMsg = r.Ok ? "Ключ «" + who + "» отозван на всех серверах." : r.Log;
+                        if (r.Ok)
+                        {
+                            poolNames.RemoveAll(x => x == PoolIssue.Normalize(who));
+                            poolNames.RemoveAll(x => string.Equals(x, who, StringComparison.OrdinalIgnoreCase));
+                        }
+                    }
+                    catch (Exception ex) { poolKeyMsg = "Ошибка отзыва: " + ex.Message; }
+                    PushSafe();
+                });
+            }
             else if (cmd == "pool-issue")
             {
                 string who = Json(raw, "name") ?? "";
@@ -1768,6 +1828,8 @@ namespace Veil
         bool srvBusy = false, srvInstalled = false;
         List<PoolHost> poolHosts = PoolRegistry.Load();
         string poolKeyMsg = "", poolIssuedKey = "", poolBase = "";
+        List<string> poolNames = new List<string>();   // ключи, которые реально лежат на серверах
+        bool poolNamesBusy = false;
 
         static int IntOr(string s, int def) { int v; return int.TryParse(s, out v) && v > 0 && v < 65536 ? v : def; }
         static string Short(Exception ex) { string m = ex.Message; return m.Length > 160 ? m.Substring(0, 160) : m; }
@@ -1908,7 +1970,14 @@ namespace Veil
                   .Append("\",\"publisher\":").Append(poolHosts[i].IsPublisher ? "true" : "false")
                   .Append(",\"role\":\"").Append(Esc(poolHosts[i].Role)).Append("\"}");
             }
-            sb.Append("],\"poolKeyMsg\":\"").Append(Esc(poolKeyMsg))
+            sb.Append("],\"poolNames\":[");
+            for (int i = 0; i < poolNames.Count; i++)
+            {
+                if (i > 0) sb.Append(',');
+                sb.Append("\"").Append(Esc(poolNames[i])).Append("\"");
+            }
+            sb.Append("],\"poolNamesBusy\":").Append(poolNamesBusy ? "true" : "false");
+            sb.Append(",\"poolKeyMsg\":\"").Append(Esc(poolKeyMsg))
               .Append("\",\"poolKey\":\"").Append(Esc(poolIssuedKey))
               .Append("\",\"poolHasSignKey\":").Append(PoolIssue.HasSignKey ? "true" : "false");
             sb.Append(",\"srvPoolCount\":").Append(core.Profiles.FindAll(x => x.Sub.Length > 0).Count);

@@ -175,6 +175,11 @@ namespace Veil
                  + " && ls -1t /var/www/api/static/data | tail -n +11 | xargs -r -I{} rm -f /var/www/api/static/data/{}");
         }
 
+        public static void DeleteBlob(SshClient c, string pattern)
+        {
+            Run(c, "rm -f /var/www/api/static/data/" + pattern);
+        }
+
         public static void Revoke(SshClient c, string name)
         {
             Run(c, "sed -i " + Quote("/^" + Safe(name).Replace("/", "\\/") + ":/d") + " /opt/veil/keys.txt && systemctl reload veil");

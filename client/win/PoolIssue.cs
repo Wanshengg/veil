@@ -113,6 +113,77 @@ namespace Veil
         }
     }
 
+    public class IssuedKey
+    {
+        public string Name = "", Blob = "", Date = "";
+        public string Line() { return Name + "|" + Blob + "|" + Date; }
+        public static IssuedKey Parse(string l)
+        {
+            string[] f = l.Split('|');
+            if (f.Length < 2) return null;
+            return new IssuedKey { Name = f[0], Blob = f[1], Date = f.Length > 2 ? f[2] : "" };
+        }
+    }
+
+    // Что мы выдали: имя, имя блоба, дата. Нужно, чтобы отзыв снимал и блоб.
+    public static class IssuedKeys
+    {
+        static string FilePath
+        {
+            get
+            {
+                string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "veil");
+                return Path.Combine(dir, "issued_keys.dat");
+            }
+        }
+
+        public static List<IssuedKey> Load()
+        {
+            var list = new List<IssuedKey>();
+            try
+            {
+                if (!File.Exists(FilePath)) return list;
+                byte[] raw = ProtectedData.Unprotect(File.ReadAllBytes(FilePath), null, DataProtectionScope.CurrentUser);
+                foreach (string l in Encoding.UTF8.GetString(raw).Split('\n'))
+                {
+                    if (l.Trim().Length == 0) continue;
+                    IssuedKey k = IssuedKey.Parse(l.Trim());
+                    if (k != null) list.Add(k);
+                }
+            }
+            catch (Exception ex) { Program.Log("issued keys load: " + ex.Message); }
+            return list;
+        }
+
+        public static void Save(List<IssuedKey> list)
+        {
+            try
+            {
+                var sb = new StringBuilder();
+                foreach (IssuedKey k in list) sb.Append(k.Line()).Append('\n');
+                byte[] enc = ProtectedData.Protect(Encoding.UTF8.GetBytes(sb.ToString()), null, DataProtectionScope.CurrentUser);
+                Directory.CreateDirectory(Path.GetDirectoryName(FilePath));
+                File.WriteAllBytes(FilePath, enc);
+            }
+            catch (Exception ex) { Program.Log("issued keys save: " + ex.Message); }
+        }
+
+        public static void Add(string name, string blob)
+        {
+            List<IssuedKey> list = Load();
+            list.RemoveAll(x => x.Name == name);
+            list.Add(new IssuedKey { Name = name, Blob = blob, Date = DateTime.Now.ToString("yyyy-MM-dd") });
+            Save(list);
+        }
+
+        public static void Remove(string name)
+        {
+            List<IssuedKey> list = Load();
+            list.RemoveAll(x => x.Name == name);
+            Save(list);
+        }
+    }
+
     public static class PoolIssue
     {
         // Ключ подписи пула (Ed25519). Лежит у оператора, DPAPI.
@@ -201,6 +272,7 @@ namespace Veil
                 string key = KeyInfo.MakeV2(poolUrlBase.TrimEnd('/') + "/" + blobName,
                                             seed, seedSni, "chrome", psk, "", PublicKey);
                 res.Key = key;
+                IssuedKeys.Add(safeName, blobName);
                 res.Ok = true;
                 sb.AppendLine("готово");
             }
@@ -213,6 +285,88 @@ namespace Veil
             res.Log = sb.ToString();
             return res;
         }
+
+        // Список имён, которые реально лежат в keys.txt на серверах
+        // (переживает переустановку приложения: читаем с серверов, а не из локального файла).
+        public static List<string> NamesOnServers(List<PoolHost> servers, PoolHost publisher, string socks, out string log)
+        {
+            var sb = new StringBuilder();
+            var names = new List<string>();
+            foreach (PoolHost h in servers)
+            {
+                if (publisher != null && string.Equals(h.Host, publisher.Host, StringComparison.OrdinalIgnoreCase)) continue;
+                try
+                {
+                    using (SshClient c = ServerSetup.Connect(h.ToTarget(socks), 20))
+                    {
+                        foreach (string n in ServerSetup.Keys(c))
+                        {
+                            if (n == "default" || names.Contains(n)) continue;
+                            names.Add(n);
+                        }
+                        sb.AppendLine("прочитан: " + (h.Label.Length > 0 ? h.Label : h.Host));
+                    }
+                }
+                catch (Exception ex) { sb.AppendLine("не ответил: " + h.Host + " — " + ex.Message); }
+            }
+            log = sb.ToString();
+            return names;
+        }
+
+        // Отзыв: убрать ключ со всех серверов и снять личный блоб.
+        public static Result Revoke(string name, List<PoolHost> servers, PoolHost publisher, string socks)
+        {
+            var res = new Result();
+            var sb = new StringBuilder();
+            try
+            {
+                string safeName = MakeSafe(name);
+                if (safeName.Length == 0) throw new InvalidOperationException("нужно имя");
+                if (servers.Count == 0) throw new InvalidOperationException("нет серверов подписки");
+
+                int done = 0;
+                foreach (PoolHost h in servers)
+                {
+                    if (publisher != null && string.Equals(h.Host, publisher.Host, StringComparison.OrdinalIgnoreCase))
+                    {
+                        sb.AppendLine("пропущен раздатчик: " + (h.Label.Length > 0 ? h.Label : h.Host));
+                        continue;
+                    }
+                    using (SshClient c = ServerSetup.Connect(h.ToTarget(socks), 20))
+                    {
+                        ServerSetup.Revoke(c, safeName);
+                        done++;
+                        sb.AppendLine("ключ снят: " + (h.Label.Length > 0 ? h.Label : h.Host));
+                    }
+                }
+
+                // блоб: точное имя из реестра, иначе всё family <name>-*
+                IssuedKey rec = IssuedKeys.Load().Find(x => x.Name == safeName);
+                if (publisher != null)
+                {
+                    using (SshClient c = ServerSetup.Connect(publisher.ToTarget(socks), 20))
+                    {
+                        string pattern = rec != null && rec.Blob.Length > 0 ? rec.Blob : safeName + "-*";
+                        ServerSetup.DeleteBlob(c, pattern);
+                        sb.AppendLine("блоб снят: " + pattern);
+                    }
+                }
+                IssuedKeys.Remove(safeName);
+                res.Ok = done > 0;
+                sb.AppendLine(done > 0 ? "готово" : "ОШИБКА: ни на одном сервере ключ не снят");
+                if (!res.Ok) throw new InvalidOperationException("ключ не снят ни с одного сервера");
+            }
+            catch (Exception ex)
+            {
+                res.Log = sb.ToString() + "ОШИБКА: " + ex.Message;
+                Program.Log("pool revoke: " + ex);
+                return res;
+            }
+            res.Log = sb.ToString();
+            return res;
+        }
+
+        public static string Normalize(string s) { return MakeSafe(s); }
 
         static string MakeSafe(string s)
         {

@@ -68,6 +68,8 @@
                               user: cfg.user, secret: cfg.secret, publisher: cfg.publisher, role: cfg.role || "" }),
     poolDel: (host) => post({ cmd: "pool-del", host }),
     poolIssue: (name) => post({ cmd: "pool-issue", name }),
+    poolKeys: () => post({ cmd: "pool-keys" }),
+    poolRevoke: (name) => post({ cmd: "pool-revoke", name }),
     clipWrite: (text) => post({ cmd: "clip-write", text }),
   };
   if (window.VEIL_UI) window.VEIL_UI.setAdapter(host);
