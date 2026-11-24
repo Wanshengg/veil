@@ -11,11 +11,14 @@ python tools/build_ui.py
 
 CSC=/c/Windows/Microsoft.NET/Framework64/v4.0.30319/csc.exe
 SEC=C:/Windows/Microsoft.NET/Framework64/v4.0.30319/System.Security.dll
+HTTP=C:/Windows/Microsoft.NET/Framework64/v4.0.30319/System.Net.Http.dll
+ZIP=C:/Windows/Microsoft.NET/Framework64/v4.0.30319/System.IO.Compression.dll
+ZIPF=C:/Windows/Microsoft.NET/Framework64/v4.0.30319/System.IO.Compression.FileSystem.dll
 SSH=client\\win\\sshnet
 WEB=client\\win\\webview2
 
 "$CSC" /nologo /target:winexe /platform:x64 /codepage:65001 /win32icon:client\\win\\veil.ico /out:dist\\veil.exe \
-  /r:$SEC /r:$WEB\\Microsoft.Web.WebView2.Core.dll /r:$WEB\\Microsoft.Web.WebView2.WinForms.dll \
+  /r:$SEC /r:$HTTP /r:$ZIP /r:$ZIPF /r:$WEB\\Microsoft.Web.WebView2.Core.dll /r:$WEB\\Microsoft.Web.WebView2.WinForms.dll \
   /r:$SSH\\Renci.SshNet.dll /r:$SSH\\BouncyCastle.Cryptography.dll \
   /r:$SSH\\Microsoft.Bcl.AsyncInterfaces.dll /r:$SSH\\System.Memory.dll \
   /r:$SSH\\System.Buffers.dll /r:$SSH\\System.Runtime.CompilerServices.Unsafe.dll \
@@ -37,6 +40,6 @@ WEB=client\\win\\webview2
   /resource:$WEB\\Microsoft.Web.WebView2.Core.dll,Microsoft.Web.WebView2.Core.dll \
   /resource:$WEB\\Microsoft.Web.WebView2.WinForms.dll,Microsoft.Web.WebView2.WinForms.dll \
   /resource:$WEB\\WebView2Loader.dll,WebView2Loader.dll \
-  client\\\\win\\\\VeilApp.cs client\\\\win\\\\ServerSetup.cs client\\\\win\\\\Pool.cs client\\\\win\\\\PoolCodec.cs client\\\\win\\\\PoolIssue.cs
+  client\\\\win\\\\VeilApp.cs client\\\\win\\\\ServerSetup.cs client\\\\win\\\\Pool.cs client\\\\win\\\\PoolCodec.cs client\\\\win\\\\PoolIssue.cs client\\\\win\\\\Zapret.cs
 
 echo "built: $(du -h dist/veil.exe | cut -f1)"

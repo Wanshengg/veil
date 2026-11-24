@@ -1129,7 +1129,11 @@ namespace Veil
                 tray.DoubleClick += delegate { ShowFromTray(); };
                 tray.Visible = true;
                 Resize += delegate { if (WindowState == FormWindowState.Minimized) HideToTray(); };
-                FormClosing += delegate { if (tray != null) tray.Visible = false; };
+                FormClosing += delegate
+                {
+                    if (tray != null) tray.Visible = false;
+                    try { if (Zapret.IsRunning) Zapret.Stop(); } catch { }
+                };
             }
             catch (Exception ex) { Program.Log("tray: " + ex.Message); }
 
@@ -1232,6 +1236,21 @@ namespace Veil
                     probeTimer.Start();
                     Program.Log("step: navigate done");
             StartSubRefresh();                     // подписки: сразу и потом раз в 6 часов
+            zapList = Zapret.Strategies();
+            if (Zapret.Autoconnect && Zapret.Installed && !string.IsNullOrEmpty(Zapret.SelectedStrategy))
+            {
+                ThreadPool.QueueUserWorkItem(delegate {
+                    try
+                    {
+                        Zapret.Start(Zapret.SelectedStrategy);
+                        autoZap = true;
+                        zapStatus = "Запрет включён · " + Zapret.SelectedStrategy;
+                        Program.Log("zapret autoconnect: " + Zapret.SelectedStrategy);
+                    }
+                    catch (Exception ex) { zapStatus = "Автозапуск запрета не удался: " + ex.Message; Program.Log("zapret autoconnect: " + ex); }
+                    PushSafe();
+                });
+            }
 
                     bool pasteKey = false;
                     foreach (string a0 in Environment.GetCommandLineArgs()) if (a0 == "--paste-key") pasteKey = true;
@@ -1412,6 +1431,97 @@ namespace Veil
                         ? "Подписка обновлена" + ((added + dropped) > 0 ? " · +" + added + " −" + dropped : " · без изменений")
                         : "Не обновилась: " + err;
                     toastSeq++;
+                    PushSafe();
+                });
+            }
+            else if (cmd == "zap-install")
+            {
+                if (zapBusy) return;
+                zapBusy = true; zapStatus = "Проверяю релиз…"; PushSafe();
+                ThreadPool.QueueUserWorkItem(delegate {
+                    try
+                    {
+                        string v = Zapret.Install(delegate(string what) { zapStatus = what; PushSafe(); });
+                        zapStatus = "Установлено " + v;
+                        zapList = Zapret.Strategies();
+                        zapResults.Clear();
+                    }
+                    catch (Exception ex) { zapStatus = "Ошибка установки: " + ex.Message; Program.Log("zapret install: " + ex); }
+                    zapBusy = false;
+                    PushSafe();
+                });
+            }
+            else if (cmd == "zap-refresh")
+            {
+                zapList = Zapret.Strategies();
+                PushSafe();
+            }
+            else if (cmd == "zap-toggle")
+            {
+                ThreadPool.QueueUserWorkItem(delegate {
+                    try
+                    {
+                        if (Zapret.IsRunning)
+                        {
+                            Zapret.Stop();
+                            zapStatus = "Запрет выключен";
+                        }
+                        else
+                        {
+                            string id = Json(raw, "id");
+                            if (string.IsNullOrEmpty(id)) id = Zapret.SelectedStrategy;
+                            if (string.IsNullOrEmpty(id) && zapList.Count > 0) id = zapList[0].Id;
+                            if (string.IsNullOrEmpty(id)) throw new InvalidOperationException("нет стратегий — сначала установи");
+                            zapStatus = "Запускаю " + id + "…"; PushSafe();
+                            Zapret.Start(id);
+                            Zapret.StateSet("strategy", id);
+                            autoZap = true;
+                            zapStatus = "Запрет включён · " + id;
+                        }
+                    }
+                    catch (Exception ex) { zapStatus = "Ошибка: " + ex.Message; Program.Log("zapret toggle: " + ex); }
+                    autoZap = Zapret.IsRunning;
+                    PushSafe();
+                });
+            }
+            else if (cmd == "zap-select")
+            {
+                string id = Json(raw, "id") ?? "";
+                Zapret.StateSet("strategy", id);
+                zapStatus = "Выбрана " + id;
+                PushSafe();
+            }
+            else if (cmd == "zap-autoconnect")
+            {
+                Zapret.StateSet("autoconnect", Zapret.Autoconnect ? "0" : "1");
+                PushSafe();
+            }
+            else if (cmd == "zap-check")
+            {
+                if (zapBusy) return;
+                zapBusy = true; zapResults.Clear(); zapStatus = "Проверяю стратегии…"; PushSafe();
+                ThreadPool.QueueUserWorkItem(delegate {
+                    try
+                    {
+                        bool wasRunning = Zapret.IsRunning;
+                        string prev = Zapret.SelectedStrategy;
+                        List<Zapret.Result> res = Zapret.CheckAll(delegate(Zapret.Strategy s, int i, int n) {
+                            zapProgress = (i + 1) + " из " + n + " · " + s.Name;
+                            zapStatus = zapProgress;
+                            PushSafe();
+                        });
+                        foreach (Zapret.Result r in res) zapResults[r.Id] = r;
+                        Zapret.Result best = Zapret.Best(res);
+                        int okCount = res.FindAll(x => x.Ok).Count;
+                        zapStatus = "Работают " + okCount + " из " + res.Count + (best != null ? " · лучшая: " + best.Name : "");
+                        if (best != null)
+                        {
+                            Zapret.StateSet("strategy", best.Id);
+                            if (wasRunning || !string.IsNullOrEmpty(prev)) { Zapret.Start(best.Id); autoZap = true; zapStatus += " · включена"; }
+                        }
+                    }
+                    catch (Exception ex) { zapStatus = "Ошибка проверки: " + ex.Message; Program.Log("zapret check: " + ex); }
+                    zapBusy = false; zapProgress = "";
                     PushSafe();
                 });
             }
@@ -1967,6 +2077,11 @@ namespace Veil
         List<PoolHost> poolHosts = PoolRegistry.Load();
         string poolKeyMsg = "", poolIssuedKey = "", poolBase = "";
         NotifyIcon tray;
+        bool zapBusy = false;
+        bool autoZap = false;
+        string zapStatus = "", zapProgress = "";
+        List<Zapret.Strategy> zapList = new List<Zapret.Strategy>();
+        Dictionary<string, Zapret.Result> zapResults = new Dictionary<string, Zapret.Result>();
         int toastSeq = 0;
         bool toastOk = true;
         string toastText = "";
@@ -2114,6 +2229,26 @@ namespace Veil
               .Append(",\"dns\":\"").Append(Esc(Settings.Dns)).Append("\"")
               .Append(",\"theme\":\"").Append(Esc(Settings.Theme)).Append("\"}");
             sb.Append(",\"note\":\"").Append(Esc(core.Note)).Append("\"");
+            sb.Append(",\"zap\":{");
+            sb.Append("\"installed\":").Append(Zapret.Installed ? "true" : "false");
+            sb.Append(",\"version\":\"").Append(Esc(Zapret.Version)).Append("\"");
+            sb.Append(",\"running\":").Append(Zapret.IsRunning ? "true" : "false");
+            sb.Append(",\"strategy\":\"").Append(Esc(Zapret.RunningStrategy.Length > 0 ? Zapret.RunningStrategy : Zapret.SelectedStrategy)).Append("\"");
+            sb.Append(",\"autoconnect\":").Append(Zapret.Autoconnect ? "true" : "false");
+            sb.Append(",\"busy\":").Append(zapBusy ? "true" : "false");
+            sb.Append(",\"status\":\"").Append(Esc(zapStatus)).Append("\"");
+            sb.Append(",\"progress\":\"").Append(Esc(zapProgress)).Append("\"");
+            sb.Append(",\"strategies\":[");
+            for (int i = 0; i < zapList.Count; i++)
+            {
+                if (i > 0) sb.Append(',');
+                Zapret.Result r;
+                zapResults.TryGetValue(zapList[i].Id, out r);
+                sb.Append("{\"id\":\"").Append(Esc(zapList[i].Id)).Append("\",\"name\":\"").Append(Esc(zapList[i].Name)).Append("\"");
+                if (r != null) sb.Append(",\"ok\":").Append(r.Ok ? "true" : "false").Append(",\"desc\":\"").Append(Esc(r.Desc)).Append("\"");
+                sb.Append("}");
+            }
+            sb.Append("]}");
             sb.Append(",\"toast\":{\"seq\":").Append(toastSeq).Append(",\"ok\":").Append(toastOk ? "true" : "false")
               .Append(",\"text\":\"").Append(Esc(toastText)).Append("\"}");
             sb.Append(",\"series\":[");

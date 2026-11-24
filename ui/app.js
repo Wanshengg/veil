@@ -145,7 +145,7 @@
       srvConnect() { snap.srvStatus = "Макет: SSH недоступен"; emit(); },
       srvInstall() {}, srvKeys() {}, srvIssue() {}, srvRevoke() {}, srvForget() {}, refreshSubs() {}, profileDel() {},
       poolAdd() {}, poolDel() {}, poolIssue() {}, clipWrite() {}, poolKeys() {}, poolRevoke() {}, poolIssueOne() {},
-      cascadeBuild() {}
+      cascadeBuild() {}, zapInstall() {}, zapToggle() {}, zapCheck() {}, zapSelect() {}, zapAutoconnect() {}
     };
   })();
 
@@ -347,6 +347,7 @@
         <div class="row clickable" data-action="newserver"><span class="t">Создать новый сервер</span><span class="v">›</span></div>
         <div class="row clickable" data-action="cities"><span class="t">Серверы</span><span class="v">${snap.srvPoolCount || 0} подписка · ${snap.srvOwnCount || 0} ключи ›</span></div>
         <div class="row clickable" data-action="sub-refresh"><span class="t">Обновить подписку</span><span class="v">↻</span></div>
+        <div class="row clickable" data-action="zapret"><span class="t">Запрет (DPI)</span><span class="v">${snap.zap && snap.zap.running ? "включён" : (snap.zap && snap.zap.installed ? "выключен" : "не установлен")} ›</span></div>
       </div>
 
       <div class="group">
@@ -475,6 +476,46 @@
           ? "Сервер уже установлен — ключ для него уже есть в списке серверов."
           : "Если сервер ещё не стоит, приложение само загрузит и настроит его и выдаст ключ."}</p>
         <p class="msg ${/ошиб|не принял|не удалось/i.test(snap.srvStatus || "") ? "err" : ""}">${esc(snap.srvStatus || "")}</p>
+      </div>
+    </section>`;
+  };
+
+  /* ── запрет (DPI-bypass) ──────────────────────────────────────────────── */
+
+  const viewZapret = (snap) => {
+    const z = snap.zap || { strategies: [] };
+    const sel = z.strategy || "";
+    return `
+    <section class="screen compact">
+      <button class="back" data-action="settings">‹ Назад</button>
+
+      <div class="group">
+        <div class="caps">Запрет · DPI</div>
+        <div class="row"><span class="t">Включён</span>${switchBtn(!!z.running, "zap-toggle", "Запрет")}</div>
+        <p class="msg">Обходит DPI на уровне пакетов: YouTube и Discord работают без туннеля.
+          Нужны права администратора; при выходе из приложения запрет останавливается.</p>
+        <div class="row"><span class="t">Версия</span><span class="v">${esc(z.version || "не установлена")}</span></div>
+        <div class="row"><span class="t">Автозапуск при старте</span>${switchBtn(!!z.autoconnect, "zap-autoconnect", "Автозапуск запрета")}</div>
+        <div class="actions">
+          <button class="btn filled" data-action="zap-install" ${z.busy ? "disabled" : ""}>${z.installed ? "Обновить набор" : "Установить"}</button>
+        </div>
+        ${z.status ? `<p class="msg">${esc(z.status)}</p>` : ""}
+      </div>
+
+      <div class="group">
+        <div class="caps">Стратегии${z.strategies.length ? " · " + z.strategies.length : ""}</div>
+        ${z.strategies.length
+          ? z.strategies.map((s) => `
+            <div class="row clickable" data-action="zap-select" data-id="${esc(s.id)}">
+              <span class="t">${esc(s.name)}${s.id === sel ? " · выбрана" : ""}<br>
+                <span class="sub">${s.ok === true ? "✓ " + esc(s.desc || "работает") : (s.ok === false ? esc(s.desc || "не прошла") : "не проверялась")}</span></span>
+              <span class="v">${s.id === sel ? "•" : ""}</span>
+            </div>`).join("")
+          : `<p class="msg">${z.installed ? "В наборе нет стратегий" : "Сначала установи набор"}</p>`}
+        <div class="actions">
+          <button class="btn outline" data-action="zap-check" ${z.busy || !z.installed ? "disabled" : ""}>Проверить все стратегии</button>
+        </div>
+        <p class="msg">Проверка по очереди запускает каждую стратегию и смотрит YouTube и Discord. Лучшая включается сама.</p>
       </div>
     </section>`;
   };
@@ -615,6 +656,7 @@
     else if (S.screen === "keys") html = viewKeys(snap);
     else if (S.screen === "server") html = viewServer(snap);
     else if (S.screen === "myservers") html = viewMyServers(snap);
+    else if (S.screen === "zapret") html = viewZapret(snap);
     else html = viewMain(snap, servers);
 
     const overlay = $("#overlay");
@@ -636,7 +678,8 @@
       snap.poolKeyMsg || "", snap.poolKey || "", S.newRu ? 1 : 0, S.newPub ? 1 : 0,
       (snap.poolNames || []).join(","), snap.poolNamesBusy ? 1 : 0, S.revokeName || "",
       snap.signKey || "", snap.signKeyMatches ? 1 : 0,
-      S.newMode || "", snap.cascadeBusy ? 1 : 0, snap.cascadeStep || "", snap.cascadeResult || ""
+      S.newMode || "", snap.cascadeBusy ? 1 : 0, snap.cascadeStep || "", snap.cascadeResult || "",
+      JSON.stringify(snap.zap || {})
     ].join("|");
 
     if (key !== S.lastKey) {
@@ -757,6 +800,12 @@
     if (a === "srv-revoke") return adapter.srvRevoke(el.dataset.name || "");
     if (a === "srv-forget") return adapter.srvForget();
     if (a === "pool-publisher") { S.poolPublisher = !S.poolPublisher; S.lastKey = ""; return render(); }
+    if (a === "zapret") { S.screen = "zapret"; return render(); }
+    if (a === "zap-install") return adapter.zapInstall();
+    if (a === "zap-toggle") return adapter.zapToggle("");
+    if (a === "zap-check") return adapter.zapCheck();
+    if (a === "zap-autoconnect") return adapter.zapAutoconnect();
+    if (a === "zap-select") return adapter.zapSelect(el.dataset.id || "");
     if (a === "myservers") {
       S.screen = "myservers";
       if (!S.namesAsked) { S.namesAsked = true; adapter.poolKeys(); }
