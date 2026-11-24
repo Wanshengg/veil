@@ -199,10 +199,14 @@
 
   const viewOnboarding = () => `
     <section class="screen">
-      <div class="mark-row">${mark(88)}</div>
-      <h1 class="phrase">Приложение создаст VPN-подключение.</h1>
+      <div class="mark-row">${mark(96)}</div>
+      <h1 class="phrase">Подключение<br>к своему серверу.</h1>
+      <p class="facts onboarding-note">Ключ даёт тот, у кого уже есть сервер,<br>или поставьте свой — это одна кнопка.</p>
       <div class="spacer"></div>
-      <button class="btn filled" data-action="onboard">Разрешить</button>
+      <div class="onboarding-actions">
+        <button class="btn filled" data-action="onboard-key">У меня есть ключ</button>
+        <button class="btn outline" data-action="onboard-server">Создать свой сервер</button>
+      </div>
     </section>`;
 
   /* ── экран: главный ───────────────────────────────────────────────────── */
@@ -226,7 +230,10 @@
 
     const facts = factsText(snap, servers);
 
-    const primary = {
+    // нет ни одного ключа — ведём добавлять, а не «подключаться» в пустоту
+    const empty = servers.length === 0;
+
+    const primary = empty ? ["Добавить ключ", "filled"] : {
       disconnected: ["Подключиться", "filled"],
       connecting: ["Отмена", "outline"],
       connected: ["Отключиться", "outline"],
@@ -243,7 +250,7 @@
       ${st === "error" ? `<p class="reason">${esc(snap.error || "Провайдер блокирует этот порт")}</p>` : ""}
 
       <div class="spacer"></div>
-      <button class="btn ${primary[1]}" data-action="primary" ${busy ? "" : ""}>${primary[0]}</button>
+      <button class="btn ${primary[1]}" data-action="${empty ? "keys" : "primary"}" ${busy ? "" : ""}>${primary[0]}</button>
       <button class="link-row" data-action="settings">Настройки <span class="arrow">›</span></button>
     </section>`;
   };
@@ -550,6 +557,8 @@
     const snap = S.snap;
 
     if (a === "onboard") return adapter.onboard();
+    if (a === "onboard-key") { adapter.onboard(); S.screen = "keys"; return render(); }
+    if (a === "onboard-server") { adapter.onboard(); S.screen = "server"; return render(); }
     if (a === "primary") {
       if (snap.state === "connected" || snap.state === "connecting" || snap.state === "reconnecting") adapter.disconnect();
       else adapter.connect();

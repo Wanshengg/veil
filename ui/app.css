@@ -383,3 +383,7 @@ html:not(.ready) *, html:not(.ready) *::before, html:not(.ready) *::after {
   cursor: pointer;
 }
 .city-row .del:hover { color: var(--danger); }
+
+/* приветственный экран: две кнопки стопкой */
+.onboarding-actions { display: grid; gap: 12px; }
+.onboarding-note { margin-top: 16px; line-height: 1.5; }
