@@ -16,6 +16,7 @@
 
   --btn-fill-bg:     var(--ink);
   --btn-fill-text:   #FFFFFF;
+  --toast-text:      #F6F4EF;
   --btn-line:        var(--ink);
   --btn-line-text:   var(--ink);
   --btn-danger-bg:   #B3261E;
@@ -59,6 +60,7 @@
 
   --btn-fill-bg:     #EDEDED;
   --btn-fill-text:   #121212;
+  --toast-text:      #121212;
   --btn-line:        #3A3A3A;
   --btn-line-text:   #EDEDED;
   --btn-danger-bg:   #DE6A5F;

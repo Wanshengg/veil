@@ -844,12 +844,29 @@
 
   /* ── запуск ───────────────────────────────────────────────────────────── */
 
+  let lastToast = 0, toastTimer = null;
+
+  function maybeToast(snap) {
+    const t = snap && snap.toast;
+    if (!t || !t.seq || t.seq === lastToast) return;
+    lastToast = t.seq;
+    const el = document.getElementById("toast");
+    if (!el) return;
+    el.textContent = t.text || "";
+    el.className = "toast show " + (t.ok ? "ok" : "fail");
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
+      el.className = "toast " + (t.ok ? "ok" : "fail");
+    }, 2600);
+  }
+
   function setAdapter(a) {
     adapter = a;
     adapter.subscribe((snap) => {
       const wasOnboarded = S.snap && S.snap.onboarded;
       S.snap = snap;
       if (snap.onboarded && wasOnboarded === false) S.last = "";
+      maybeToast(snap);
       render();
     });
   }

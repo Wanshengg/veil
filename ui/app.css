@@ -405,3 +405,26 @@ html:not(.ready) *, html:not(.ready) *::before, html:not(.ready) *::after {
   font-family: var(--sans); font-size: 18px; line-height: 1; color: var(--secondary);
 }
 .row .x:hover { color: var(--ink); }
+
+/* ── всплывающая плашка: выезжает из-за нижнего края и уезжает обратно ──── */
+
+.toast {
+  position: fixed; left: 0; right: 0; bottom: 0;
+  margin: 0 var(--pad) calc(var(--pad));
+  padding: 14px 16px;
+  font-family: var(--sans); font-size: 14px; line-height: 1.35;
+  color: var(--toast-text);
+  background: var(--accent);
+  transform: translateY(calc(100% + 32px));
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 240ms cubic-bezier(.22,.61,.36,1), opacity 240ms linear;
+  z-index: 40;
+}
+.toast.ok { background: var(--accent); color: var(--toast-text); }
+.toast.fail { background: var(--danger); color: var(--toast-text); }
+.toast.show { transform: translateY(0); opacity: 1; }
+
+@media (prefers-reduced-motion: reduce) {
+  .toast { transition: none; }
+}

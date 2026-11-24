@@ -1406,6 +1406,12 @@ namespace Veil
                     string err = Subs.Refresh(core.Profiles, out added, out dropped);
                     Store.Save(core.Profiles);
                     Program.Log("subs manual: +" + added + " -" + dropped + " " + err);
+                    bool ok = string.IsNullOrEmpty(err);
+                    toastOk = ok;
+                    toastText = ok
+                        ? "Подписка обновлена" + ((added + dropped) > 0 ? " · +" + added + " −" + dropped : " · без изменений")
+                        : "Не обновилась: " + err;
+                    toastSeq++;
                     PushSafe();
                 });
             }
@@ -1961,6 +1967,9 @@ namespace Veil
         List<PoolHost> poolHosts = PoolRegistry.Load();
         string poolKeyMsg = "", poolIssuedKey = "", poolBase = "";
         NotifyIcon tray;
+        int toastSeq = 0;
+        bool toastOk = true;
+        string toastText = "";
         bool trayHintShown = false;
 
         void HideToTray()
@@ -2105,6 +2114,8 @@ namespace Veil
               .Append(",\"dns\":\"").Append(Esc(Settings.Dns)).Append("\"")
               .Append(",\"theme\":\"").Append(Esc(Settings.Theme)).Append("\"}");
             sb.Append(",\"note\":\"").Append(Esc(core.Note)).Append("\"");
+            sb.Append(",\"toast\":{\"seq\":").Append(toastSeq).Append(",\"ok\":").Append(toastOk ? "true" : "false")
+              .Append(",\"text\":\"").Append(Esc(toastText)).Append("\"}");
             sb.Append(",\"series\":[");
             for (int i = 0; i < core.PingSeries.Count; i++)
             {
