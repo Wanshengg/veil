@@ -144,7 +144,8 @@
       keyAdd() {},
       srvConnect() { snap.srvStatus = "Макет: SSH недоступен"; emit(); },
       srvInstall() {}, srvKeys() {}, srvIssue() {}, srvRevoke() {}, srvForget() {}, refreshSubs() {}, profileDel() {},
-      poolAdd() {}, poolDel() {}, poolIssue() {}, clipWrite() {}, poolKeys() {}, poolRevoke() {}, poolIssueOne() {}
+      poolAdd() {}, poolDel() {}, poolIssue() {}, clipWrite() {}, poolKeys() {}, poolRevoke() {}, poolIssueOne() {},
+      cascadeBuild() {}
     };
   })();
 
@@ -180,6 +181,14 @@
     if (m < 60) return m + " мин";
     return Math.floor(m / 60) + " ч " + (m % 60) + " мин";
   };
+
+  // поле формы: подпись капсом + ввод
+  const field = (id, label, placeholder, type, value) => `
+    <label class="field">
+      <span class="caps">${label}</span>
+      <input id="${id}" type="${type || "text"}" placeholder="${placeholder || ""}"
+             value="${esc(value || "")}">
+    </label>`;
 
   const switchBtn = (on, action, label) =>
     `<button type="button" class="switch" role="switch" aria-checked="${on}" aria-label="${esc(label)}" data-action="${action}">
@@ -379,19 +388,75 @@
 
   const viewServer = (snap) => {
     const busy = !!snap.srvBusy;
-    const keys = snap.srvKeys || [];
-    const field = (id, label, ph, type, value) => `
-      <label class="field">
-        <span class="caps">${esc(label)}</span>
-        <input id="${id}" type="${type || "text"}" placeholder="${esc(ph)}" value="${esc(value || "")}" spellcheck="false" autocomplete="off" ${busy ? "disabled" : ""}>
-      </label>`;
 
+    // шаг 1: как подключаемся
+    if (!S.newMode) {
+      return `
+      <section class="screen compact">
+        <button class="back" data-action="settings">‹ Назад</button>
+        <div class="group">
+          <div class="caps">Новый сервер</div>
+          <h2 class="phrase small">Как подключаемся?</h2>
+        </div>
+        <div class="group">
+          <div class="actions">
+            <button class="btn filled" data-action="new-mode-cascade">Каскад через РУ-сервер</button>
+          </div>
+          <p class="msg">Домашние и зарубежные сайты идут через зарубежный сервер, РУ-сайты — напрямую с российского.
+            РУ-сервер принимает подключения из России и раздаёт список ключей.</p>
+          <div class="actions">
+            <button class="btn outline" data-action="new-mode-direct">Напрямую</button>
+          </div>
+          <p class="msg">Один сервер без каскада. Подходит, если сервер не блокируют и РУ-выход не нужен.</p>
+        </div>
+      </section>`;
+    }
+
+    // шаг 2а: каскад — сначала РУ, потом зарубежный
+    if (S.newMode === "cascade") {
+      return `
+      <section class="screen compact">
+        <button class="back" data-action="new-mode-back">‹ Назад</button>
+        <div class="group">
+          <div class="caps">Каскад через РУ</div>
+          ${field("ruHost", "РУ-сервер", "IP или домен российского VPS", "text")}
+          ${field("ruPort", "Порт SSH", "22", "number", "22")}
+          ${field("ruUser", "Пользователь", "root", "text", "root")}
+          ${field("ruSecret", "Пароль или путь к ключу", "пароль или C:\\Users\\you\\.ssh\\id_ed25519")}
+          ${field("ruDomain", "Домен РУ (необязательно)", "для HTTPS-раздачи списка")}
+          <p class="msg">РУ-сервер станет релеем, раздатчиком списка и выходом для российских сайтов.</p>
+        </div>
+
+        <div class="group">
+          <div class="caps">Зарубежный сервер</div>
+          ${field("fHost", "Сервер", "IP или домен", "text")}
+          ${field("fPort", "Порт SSH", "22", "number", "22")}
+          ${field("fUser", "Пользователь", "root", "text", "root")}
+          ${field("fSecret", "Пароль или путь к ключу", "пароль или путь к ключу")}
+          ${field("fDomain", "Домен", "необязательно")}
+          ${field("fCc", "Код страны", "SE, FI, NL…")}
+          ${field("fCountry", "Название", "Швеция, Финляндия…")}
+        </div>
+
+        <div class="group">
+          <div class="actions">
+            <button class="btn filled" data-action="cascade-build" ${busy || snap.cascadeBusy ? "disabled" : ""}>Собрать каскад и подписку</button>
+          </div>
+          ${snap.cascadeBusy ? `<p class="msg">${esc(snap.cascadeStep || "Работаю…")}</p>` : ""}
+          ${snap.cascadeResult ? `<div class="keybox">${esc(snap.cascadeResult)}</div>` : ""}
+          ${snap.poolKey ? `
+            <div class="keybox">${esc(snap.poolKey)}</div>
+            <div class="actions"><button class="btn outline" data-action="pool-copy">Скопировать ключ</button></div>` : ""}
+        </div>
+      </section>`;
+    }
+
+    // шаг 2б: напрямую — обычная установка одного сервера
     return `
     <section class="screen compact">
-      <button class="back" data-action="settings">‹ Назад</button>
-
+      <button class="back" data-action="new-mode-back">‹ Назад</button>
       <div class="group">
-        <div class="caps">Новый сервер</div>
+        <div class="caps">Сервер напрямую</div>
         ${field("srvHost", "Сервер", "203.0.113.10 или домен", "text", snap.srvHost)}
         ${field("srvPort", "Порт", "22", "number", "22")}
         ${field("srvUser", "Пользователь", "root", "text", snap.srvUser)}
@@ -407,23 +472,9 @@
           <button class="btn filled" data-action="srv-connect" ${busy ? "disabled" : ""}>Подключиться</button>
         </div>
         <p class="msg">${snap.srvInstalled
-          ? "Сервер уже установлен — останется выдать ключи."
-          : "Если сервер ещё не стоит, приложение само загрузит и настроит его."}</p>
+          ? "Сервер уже установлен — ключ для него уже есть в списке серверов."
+          : "Если сервер ещё не стоит, приложение само загрузит и настроит его и выдаст ключ."}</p>
         <p class="msg ${/ошиб|не принял|не удалось/i.test(snap.srvStatus || "") ? "err" : ""}">${esc(snap.srvStatus || "")}</p>
-      </div>
-
-      <div class="group">
-        <div class="caps">Роль сервера</div>
-        <div class="row"><span class="t">РУ-сервер: через него каскад</span>${switchBtn(!!S.newRu, "new-ru", "РУ-сервер")}</div>
-        <p class="msg">РУ-сервер принимает подключения из России и выводит в РФ-интернет.
-          Остальные серверы считаются зарубежными и ходят через него каскадом.</p>
-        <div class="row"><span class="t">Раздатчик списка ключей</span>${switchBtn(!!S.newPub, "new-pub", "Раздатчик")}</div>
-        <p class="msg">Раздатчик хранит зашифрованный список серверов и отдаёт его по ссылке.
-          Туннель через него не идёт.</p>
-        <div class="actions">
-          <button class="btn filled" data-action="pool-add" ${busy ? "disabled" : ""}>Добавить в мои серверы</button>
-        </div>
-        <p class="msg">Установка на сервер — кнопкой «Подключиться» выше. Добавление только запоминает доступ и роль.</p>
       </div>
     </section>`;
   };
@@ -580,7 +631,8 @@
       (snap.srvKeys || []).join(","), servers.length,
       (snap.poolServers || []).map((h) => h.host + (h.publisher ? "*" : "") + (h.role || "")).join(","),
       snap.poolKeyMsg || "", snap.poolKey || "", S.newRu ? 1 : 0, S.newPub ? 1 : 0,
-      (snap.poolNames || []).join(","), snap.poolNamesBusy ? 1 : 0, S.revokeName || ""
+      (snap.poolNames || []).join(","), snap.poolNamesBusy ? 1 : 0, S.revokeName || "",
+      S.newMode || "", snap.cascadeBusy ? 1 : 0, snap.cascadeStep || "", snap.cascadeResult || ""
     ].join("|");
 
     if (key !== S.lastKey) {
@@ -721,7 +773,20 @@
       adapter.poolIssueOne(who.trim());
       return;
     }
-    if (a === "newserver") { S.screen = "server"; return render(); }
+    if (a === "newserver") { S.screen = "server"; S.newMode = ""; return render(); }
+    if (a === "new-mode-cascade") { S.newMode = "cascade"; S.lastKey = ""; return render(); }
+    if (a === "new-mode-direct") { S.newMode = "direct"; S.lastKey = ""; return render(); }
+    if (a === "new-mode-back") { S.newMode = ""; S.lastKey = ""; return render(); }
+    if (a === "cascade-build") {
+      const v = (id) => { const e = document.getElementById(id); return e ? e.value.trim() : ""; };
+      adapter.cascadeBuild({
+        ruHost: v("ruHost"), ruPort: v("ruPort") || "22", ruUser: v("ruUser") || "root",
+        ruSecret: v("ruSecret"), ruDomain: v("ruDomain"),
+        fHost: v("fHost"), fPort: v("fPort") || "22", fUser: v("fUser") || "root",
+        fSecret: v("fSecret"), fDomain: v("fDomain"), fCc: v("fCc"), fCountry: v("fCountry")
+      });
+      return;
+    }
     if (a === "new-ru") { S.newRu = !S.newRu; S.lastKey = ""; return render(); }
     if (a === "new-pub") { S.newPub = !S.newPub; S.lastKey = ""; return render(); }
     if (a === "pool-add") {

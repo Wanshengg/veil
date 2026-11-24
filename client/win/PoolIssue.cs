@@ -184,6 +184,120 @@ namespace Veil
         }
     }
 
+    // Сборка каскада: РУ-сервер (релей + раздатчик + выход для РУ) и зарубежный.
+    public static class Cascade
+    {
+        public class Out
+        {
+            public bool Ok;
+            public string Log = "";
+            public string Key = "";
+            public string Blob = "";
+            public string PoolUrl = "";
+            public string ForeignEntry = "";
+            public string RuEntry = "";
+        }
+
+        public static Out Build(PoolHost ru, string ruDomain, PoolHost foreign, string foreignDomain,
+                                string foreignCc, string foreignCountry,
+                                Func<string, string, string, string> ensureInstalled,   // (target, domain, what) → psk или ""
+                                string socks)
+        {
+            var o = new Out();
+            var sb = new StringBuilder();
+            try
+            {
+                // 1. зарубежный сервер
+                sb.AppendLine("зарубежный: " + foreign.Host);
+                string foreignPsk = ensureInstalled(foreign.ToTarget(socks).Host + "|" + foreign.Port + "|" + foreign.User + "|" + foreign.Secret,
+                                                    foreignDomain, "зарубежный");
+                if (foreignPsk.Length == 0) throw new InvalidOperationException("зарубежный сервер не установлен");
+
+                // 2. РУ-сервер: он же выход для РУ-адресов
+                sb.AppendLine("РУ-сервер: " + ru.Host);
+                string ruPsk = ensureInstalled(ru.ToTarget(socks).Host + "|" + ru.Port + "|" + ru.User + "|" + ru.Secret,
+                                               ruDomain, "РУ");
+                if (ruPsk.Length == 0) throw new InvalidOperationException("РУ-сервер не установлен");
+
+                // один PSK на весь пул: берём с РУ и ставим зарубежному
+                if (ruPsk != foreignPsk)
+                {
+                    using (SshClient cF = ServerSetup.Connect(foreign.ToTarget(socks), 25))
+                    {
+                        ServerSetup.AddKey(cF, "default", ruPsk);
+                        sb.AppendLine("PSK зарубежного приведён к общему");
+                    }
+                }
+                string pubRoot = "/var/www/api";
+                using (SshClient cRu = ServerSetup.Connect(ru.ToTarget(socks), 25))
+                {
+                    ServerSetup.EnsureNginxStream(cRu);
+                    pubRoot = ServerSetup.EnsurePublisher(cRu, ruDomain);
+                    sb.AppendLine("РУ: nginx + раздатчик готовы");
+
+                    string ruHostForRelay = string.IsNullOrEmpty(ruDomain) ? ru.Host : ruDomain;
+                    string fHost = string.IsNullOrEmpty(foreignDomain) ? foreign.Host : foreignDomain;
+                    int port = ServerSetup.FindRelay(cRu, fHost, 443);
+                    if (port > 0) sb.AppendLine("релей уже есть: " + port + " → " + fHost + ":443");
+                    else
+                    {
+                        port = ServerSetup.FreePort(cRu, 10000);
+                        if (port == 0) throw new InvalidOperationException("нет свободного порта для релея");
+                        ServerSetup.WriteRelay(cRu, port, fHost, 443, "каскад → " + fHost);
+                    }
+                    sb.AppendLine("релей: " + port + " → " + fHost + ":443");
+
+                    string subj = ServerSetup.RelaySubject(cRu, port, fHost);
+                    sb.AppendLine("проверка сертификата через релей: " + (subj.Length > 0 ? subj : "не ответил"));
+                    if (subj.Length == 0) throw new InvalidOperationException("каскад не отвечает");
+
+                    // новая запись каскада
+                    o.ForeignEntry = "{ \"id\": \"via-ru\", \"host\": \"" + ruHostForRelay +
+                                     "\", \"ports\": [" + port + "], \"sni\": \"" + fHost +
+                                     "\", \"cc\": \"" + (foreignCc.Length > 0 ? foreignCc : "XX") +
+                                     "\", \"country\": \"" + (foreignCountry.Length > 0 ? foreignCountry : "Зарубежный") +
+                                     "\", \"city\": \"через РУ\", \"up\": true }";
+                    o.RuEntry = "{ \"id\": \"ru\", \"host\": \"" + ruHostForRelay +
+                                "\", \"ports\": [8443, 2083, 9443], \"sni\": \"" + ruHostForRelay +
+                                "\", \"cc\": \"RU\", \"country\": \"Россия\", \"city\": \"Россия\", \"up\": true }";
+                    o.PoolUrl = (string.IsNullOrEmpty(ruDomain) ? "http://" + ru.Host : "https://" + ruDomain) + "/static/data";
+                    sb.AppendLine("адрес раздатчика: " + o.PoolUrl);
+                }
+
+                // 3. пул: РУ как выход + каскад на зарубежный
+                string json = "{\n  \"v\": 2,\n  \"pool\": \"veil\",\n  \"issued\": \"" + DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ") +
+                              "\",\n  \"ttl\": 21600,\n  \"servers\": [\n    " + o.RuEntry + ",\n    " + o.ForeignEntry + "\n  ]\n}\n";
+                byte[] blob = PoolCodec.Pack(json, LoadSignKey(), ruPsk);
+                string blobName = "pool-" + DateTime.UtcNow.ToString("yyMMddHHmm");
+                using (SshClient cRu2 = ServerSetup.Connect(ru.ToTarget(socks), 25))
+                {
+                    ServerSetup.PublishBlob(cRu2, blob, blobName, pubRoot);
+                    string code = ServerSetup.Run(cRu2, "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1/static/data/" + blobName, 30).Trim();
+                    sb.AppendLine("отдача по http: " + code);
+                    if (code != "200") throw new InvalidOperationException("блоб не отдаётся по http (код " + code + ")");
+                }
+                o.Blob = blobName;
+                sb.AppendLine("пул выложен: " + blobName + " (" + blob.Length + " байт)");
+
+                // 4. ключ владельцу
+                string sub = o.PoolUrl + "/" + blobName;
+                o.Key = KeyInfo.MakeV2(sub, "", "", "chrome", ruPsk, "", PoolIssue.PublicKey);
+                o.Ok = true;
+                sb.AppendLine("ключ подписки готов");
+            }
+            catch (Exception ex)
+            {
+                o.Log = sb.ToString() + "ОШИБКА: " + ex.Message;
+                Program.Log("cascade: " + ex);
+                return o;
+            }
+            o.Log = sb.ToString();
+            return o;
+        }
+
+        static byte[] LoadSignKey() { return PoolIssue.SignKeyBytes(); }
+    }
+
     public static class PoolIssue
     {
         // Ключ подписи пула (Ed25519). Лежит у оператора, DPAPI.
@@ -204,6 +318,8 @@ namespace Veil
             byte[] enc = ProtectedData.Protect(priv, null, DataProtectionScope.CurrentUser);
             File.WriteAllBytes(SignKeyPath, enc);
         }
+
+        public static byte[] SignKeyBytes() { return LoadSignKey(); }
 
         static byte[] LoadSignKey()
         {

@@ -99,6 +99,12 @@ namespace Veil
         // Список ключей: имена из /opt/veil/keys.txt
         // Установлен ли сервер: есть бинарник. Если юнит остановлен — поднимаем.
         // Возвращает true, если сервер готов принимать клиентов.
+        public static string DefaultPsk(SshClient c)
+        {
+            string o = Run(c, "grep '^default:' /opt/veil/keys.txt 2>/dev/null | head -1 | cut -d: -f2");
+            return o.Trim();
+        }
+
         public static bool Installed(SshClient c)
         {
             string o = Run(c, "if [ -x /opt/veil/veil-server ]; then echo bin; else echo none; fi", 30);
@@ -167,12 +173,106 @@ namespace Veil
         }
 
         // Положить блоб пула на раздатчик.
-        public static void PublishBlob(SshClient c, byte[] blob, string name)
+        public static void PublishBlob(SshClient c, byte[] blob, string name) { PublishBlob(c, blob, name, "/var/www/api"); }
+
+        public static void PublishBlob(SshClient c, byte[] blob, string name, string root)
         {
-            Run(c, "mkdir -p /var/www/api/static/data");
-            Upload(c, blob, "/var/www/api/static/data/" + name);
-            Run(c, "chown www-data:www-data /var/www/api/static/data/" + name + " && chmod 644 /var/www/api/static/data/" + name
-                 + " && ls -1t /var/www/api/static/data | tail -n +11 | xargs -r -I{} rm -f /var/www/api/static/data/{}");
+            string dir = root.TrimEnd('/') + "/static/data";
+            Run(c, "mkdir -p " + dir);
+            Upload(c, blob, dir + "/" + name);
+            Run(c, "chown www-data:www-data " + dir + "/" + name + " && chmod 644 " + dir + "/" + name
+                 + " && ls -1t " + dir + " | tail -n +11 | xargs -r -I{} rm -f " + dir + "/{}");
+        }
+
+        // ── каскад и раздатчик ────────────────────────────────────────────
+        // nginx со stream: ставим только если его нет, конфиг не трогаем.
+        public static string EnsureNginxStream(SshClient c)
+        {
+            string has = Run(c, "command -v nginx >/dev/null && echo yes || echo no");
+            if (has.IndexOf("yes") < 0)
+            {
+                Run(c, "export DEBIAN_FRONTEND=noninteractive; (apt-get update -qq && apt-get install -y -qq nginx libnginx-mod-stream) " +
+                       "|| (dnf install -y nginx nginx-mod-stream) || (yum install -y nginx)", 600);
+            }
+            else
+            {
+                // модуль stream мог не приехать вместе с nginx
+                Run(c, "ls /usr/lib/nginx/modules/ngx_stream_module.so >/dev/null 2>&1 || " +
+                       "(export DEBIAN_FRONTEND=noninteractive; apt-get install -y -qq libnginx-mod-stream || dnf install -y nginx-mod-stream || true)", 600);
+            }
+            Run(c, "mkdir -p /etc/nginx/stream.d");
+            string inc = Run(c, "grep -q 'stream.d' /etc/nginx/nginx.conf && echo yes || echo no");
+            if (inc.IndexOf("yes") < 0)
+            {
+                // stream {} один на конфиг: вставляем блок перед http {, если его нет
+                Run(c, "python3 - <<'PY'\n" +
+                       "p='/etc/nginx/nginx.conf'\n" +
+                       "s=open(p).read()\n" +
+                       "if 'stream {' not in s:\n" +
+                       "    s=s.replace('http {','stream {\\n    include /etc/nginx/stream.d/*.conf;\\n}\\n\\nhttp {',1)\n" +
+                       "    open(p,'w').write(s)\n" +
+                       "PY");
+            }
+            return Run(c, "nginx -v 2>&1");
+        }
+
+        // Раздатчик: кладём списки в корень сайта, который nginx уже отдаёт.
+        // Свой server-блок не пишем — иначе он воюет с дефолтным сайтом хоста.
+        // Возвращает каталог, доступный по http://<хост>/.
+        public static string EnsurePublisher(SshClient c, string domain)
+        {
+            string o = Run(c, "grep -rh -o -E 'root[[:space:]]+[^;]+' /etc/nginx/sites-enabled /etc/nginx/conf.d 2>/dev/null | head -3");
+            string root = "";
+            foreach (string line in o.Split('\n'))
+            {
+                string l = line.Trim();
+                if (!l.StartsWith("root")) continue;
+                string p = l.Substring(4).Trim();
+                if (p.Length > 1 && p.StartsWith("/") && !p.Contains("$")) { root = p; break; }
+            }
+            if (root.Length == 0) root = "/var/www/html";
+            Run(c, "mkdir -p " + root + "/static/data && (chown -R www-data:www-data " + root + " || true) && chmod 755 " + root);
+            if (domain.Length > 0)
+                Run(c, "nginx -t >/dev/null 2>&1 && systemctl reload nginx || true");
+            return root.TrimEnd('/');
+        }
+
+        // Свободный порт для релея (по умолчанию с 10000).
+        public static int FreePort(SshClient c, int from)
+        {
+            string o = Run(c, "for p in $(seq " + from + " " + (from + 40) + "); do " +
+                              "ss -ltn | grep -q ':'$p' ' || { echo $p; break; }; done");
+            int p2;
+            int.TryParse(o.Trim(), out p2);
+            return p2;
+        }
+
+        // Существующий релей на этого получателя: возвращает порт или 0.
+        public static int FindRelay(SshClient c, string targetHost, int targetPort)
+        {
+            string o = Run(c, "grep -l 'proxy_pass " + targetHost + ":" + targetPort + ";' /etc/nginx/stream.d/relay-*.conf 2>/dev/null | head -1");
+            string f = o.Trim();
+            if (f.Length == 0) return 0;
+            string m = System.Text.RegularExpressions.Regex.Match(f, @"relay-(\d+)\.conf").Groups[1].Value;
+            int p;
+            return int.TryParse(m, out p) ? p : 0;
+        }
+
+        // Релей: приём на порту и передача в зарубежный сервер без расшифровки.
+        public static void WriteRelay(SshClient c, int port, string targetHost, int targetPort, string label)
+        {
+            string conf = "# " + label + "\nserver {\n    listen " + port + ";\n    proxy_pass " + targetHost + ":" + targetPort + ";\n" +
+                          "    proxy_connect_timeout 10s;\n    proxy_timeout 1h;\n}\n";
+            Upload(c, Encoding.UTF8.GetBytes(conf), "/etc/nginx/stream.d/relay-" + port + ".conf");
+            Run(c, "nginx -t && systemctl reload nginx");
+        }
+
+        // Проверка каскада: сертификат за портом должен быть от зарубежного сервера.
+        public static string RelaySubject(SshClient c, int port, string sni)
+        {
+            string o = Run(c, "echo | timeout 10 openssl s_client -connect 127.0.0.1:" + port +
+                              " -servername " + sni + " 2>/dev/null | openssl x509 -noout -subject 2>/dev/null", 40);
+            return o.Trim();
         }
 
         public static void DeleteBlob(SshClient c, string pattern)

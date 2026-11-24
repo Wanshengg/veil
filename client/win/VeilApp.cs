@@ -1405,6 +1405,66 @@ namespace Veil
                 poolKeyMsg = n > 0 ? "Удалён из подписки: " + host : "Такого сервера нет";
                 PushSafe();
             }
+            else if (cmd == "cascade-build")
+            {
+                string ruHost = Json(raw, "ruHost") ?? "", ruUser0 = Json(raw, "ruUser") ?? "";
+                string fHost = Json(raw, "fHost") ?? "", fUser0 = Json(raw, "fUser") ?? "";
+                if (ruHost.Length == 0 || fHost.Length == 0) { cascadeResult = "Нужны оба сервера: РУ и зарубежный"; PushSafe(); return; }
+                PoolHost ru = MakeHost(ruHost, Json(raw, "ruPort"), ruUser0, Json(raw, "ruSecret"), "РУ-выход", true, "ru");
+                string ruDomain = Json(raw, "ruDomain") ?? "";
+                PoolHost foreign = MakeHost(fHost, Json(raw, "fPort"), fUser0, Json(raw, "fSecret"),
+                                            Json(raw, "fCountry") ?? fHost, false, "");
+                string fDomain = Json(raw, "fDomain") ?? "";
+                string fCc = (Json(raw, "fCc") ?? "").ToUpperInvariant();
+                string fCountry = Json(raw, "fCountry") ?? "";
+
+                cascadeBusy = true; cascadeStep = "Готовлю серверы…"; cascadeResult = ""; poolIssuedKey = "";
+                PushSafe();
+                ThreadPool.QueueUserWorkItem(delegate {
+                    try
+                    {
+                        Cascade.Out r = Cascade.Build(ru, ruDomain, foreign, fDomain, fCc, fCountry,
+                            delegate(string target, string domain, string what)
+                            {
+                                string[] t = target.Split('|');
+                                SshTarget st = MakeTarget(t[0], t[1], t[2], t[3]);
+                                cascadeStep = "Сервер «" + what + "»: проверяю установку…"; PushSafe();
+                                using (SshClient sc = ServerSetup.Connect(st, 25))
+                                {
+                                    if (!ServerSetup.Installed(sc))
+                                    {
+                                        cascadeStep = "Сервер «" + what + "»: устанавливаю veil…"; PushSafe();
+                                        byte[] bin = ReadResource("veil-server-linux");
+                                        string boot = Encoding.UTF8.GetString(ReadResource("bootstrap.sh"));
+                                        string kl;
+                                        string lg = ServerSetup.Install(sc, bin, boot, domain, "", out kl);
+                                        Program.Log("cascade install (" + what + "):\n" + (lg.Length > 3000 ? lg.Substring(lg.Length - 3000) : lg));
+                                        if (kl.Length == 0) return "";
+                                    }
+                                    cascadeStep = "Сервер «" + what + "»: читаю ключ…"; PushSafe();
+                                    return ServerSetup.DefaultPsk(sc);
+                                }
+                            }, "");
+
+                        cascadeResult = r.Log;
+                        poolIssuedKey = r.Ok ? r.Key : "";
+                        if (r.Ok)
+                        {
+                            PoolRegistry.Add(ru);
+                            PoolRegistry.Add(foreign);
+                            poolHosts = PoolRegistry.Load();
+                            // список сразу доступен и на будущее
+                            string dir = Path.Combine(Engine.Dir, "pool_url.txt");
+                            File.WriteAllText(dir, r.PoolUrl);
+                        }
+                        cascadeStep = r.Ok ? "Готово" : "Ошибка";
+                        Program.Log("cascade: " + r.Log.Replace("\n", " | "));
+                    }
+                    catch (Exception ex) { cascadeResult = "Ошибка: " + ex.Message; cascadeStep = "Ошибка"; }
+                    cascadeBusy = false;
+                    PushSafe();
+                });
+            }
             else if (cmd == "pool-keys")
             {
                 if (poolNamesBusy) return;
@@ -1861,6 +1921,8 @@ namespace Veil
         bool srvBusy = false, srvInstalled = false;
         List<PoolHost> poolHosts = PoolRegistry.Load();
         string poolKeyMsg = "", poolIssuedKey = "", poolBase = "";
+        bool cascadeBusy = false;
+        string cascadeStep = "", cascadeResult = "";
         List<string> poolNames = new List<string>();   // ключи, которые реально лежат на серверах
         bool poolNamesBusy = false;
 
@@ -1880,6 +1942,16 @@ namespace Veil
         static string HostOf(string s) { int i = s.LastIndexOf(':'); return i > 0 ? s.Substring(0, i) : s; }
         static int PortOf(string s, int def) { int i = s.LastIndexOf(':'); int p; return i > 0 && int.TryParse(s.Substring(i + 1), out p) ? p : def; }
         static string SniOf(string s) { return HostOf(s); }
+
+        PoolHost MakeHost(string host, string port, string user, string secret, string label, bool publisher, string role)
+        {
+            return new PoolHost
+            {
+                Label = label, Host = host, Port = int.Parse(string.IsNullOrEmpty(port) ? "22" : port),
+                User = string.IsNullOrEmpty(user) ? "root" : user, Secret = secret,
+                IsPublisher = publisher, Role = role
+            };
+        }
 
         void DoInstall(string domain)
         {
@@ -2003,7 +2075,10 @@ namespace Veil
                   .Append("\",\"publisher\":").Append(poolHosts[i].IsPublisher ? "true" : "false")
                   .Append(",\"role\":\"").Append(Esc(poolHosts[i].Role)).Append("\"}");
             }
-            sb.Append("],\"poolNames\":[");
+            sb.Append("],\"cascadeBusy\":").Append(cascadeBusy ? "true" : "false");
+            sb.Append(",\"cascadeStep\":\"").Append(Esc(cascadeStep)).Append("\"");
+            sb.Append(",\"cascadeResult\":\"").Append(Esc(cascadeResult)).Append("\"");
+            sb.Append(",\"poolNames\":[");
             for (int i = 0; i < poolNames.Count; i++)
             {
                 if (i > 0) sb.Append(',');

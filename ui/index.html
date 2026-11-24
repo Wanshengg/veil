@@ -71,6 +71,10 @@
     poolKeys: () => post({ cmd: "pool-keys" }),
     poolRevoke: (name) => post({ cmd: "pool-revoke", name }),
     poolIssueOne: (name) => post({ cmd: "pool-issue-one", name }),
+    cascadeBuild: (cfg) => post({ cmd: "cascade-build",
+      ruHost: cfg.ruHost, ruPort: cfg.ruPort, ruUser: cfg.ruUser, ruSecret: cfg.ruSecret, ruDomain: cfg.ruDomain,
+      fHost: cfg.fHost, fPort: cfg.fPort, fUser: cfg.fUser, fSecret: cfg.fSecret,
+      fDomain: cfg.fDomain, fCc: cfg.fCc, fCountry: cfg.fCountry }),
     clipWrite: (text) => post({ cmd: "clip-write", text }),
   };
   if (window.VEIL_UI) window.VEIL_UI.setAdapter(host);
