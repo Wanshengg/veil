@@ -1045,7 +1045,11 @@ html:not(.ready) *, html:not(.ready) *::before, html:not(.ready) *::after {
           ? z.strategies.map((s) => `
             <div class="row clickable" data-action="zap-select" data-id="${esc(s.id)}">
               <span class="t">${esc(s.name)}${s.id === sel ? " · выбрана" : ""}<br>
-                <span class="sub">${s.ok === true ? "✓ " + esc(s.desc || "работает") : (s.ok === false ? esc(s.desc || "не прошла") : "не проверялась")}</span></span>
+                <span class="sub">${esc(s.id)}</span><br>
+                ${s.ok === undefined
+                  ? `<span class="sub">не проверялась</span>`
+                  : `<span class="sub">youtube ${esc(s.yt)} · discord ${esc(s.dc)}</span><br>
+                     <span class="sub">ICMP ${esc(s.icmp)} · ${esc(s.checks)} проверок · ${esc(s.desc)}</span>`}</span>
               <span class="v">${s.id === sel ? "•" : ""}</span>
             </div>`).join("")
           : `<p class="msg">${z.installed ? "В наборе нет стратегий" : "Сначала установи набор"}</p>`}

@@ -1237,6 +1237,8 @@ namespace Veil
                     Program.Log("step: navigate done");
             StartSubRefresh();                     // подписки: сразу и потом раз в 6 часов
             zapList = Zapret.Strategies();
+            zapResults = Zapret.LoadResults();
+            Zapret.StopStale();
             string zapElevate = Program.ArgOf(Environment.GetCommandLineArgs(), "--zap-elevate=");
             if (zapElevate.Length > 0)
             {
@@ -1535,10 +1537,16 @@ namespace Veil
                         foreach (Zapret.Result r in res)
                         {
                             zapResults[r.Id] = r;
-                            Program.Log("zapret check: " + r.Id + " → " + (r.Ok ? "ok " + r.PingMs + " мс" : "fail " + r.Error));
+                            Program.Log("zapret check: " + r.Id +
+                                " · youtube " + r.Youtube.Desc +
+                                " · discord " + r.Discord.Desc +
+                                " · icmp " + r.PingMs + " мс " + r.PingPassed + "/" + r.PingTotal +
+                                " · проверок " + r.ChecksOk + "/" + r.ChecksTotal +
+                                " · " + r.Status);
                         }
                         Zapret.Result best = Zapret.Best(res);
                         int okCount = res.FindAll(x => x.Ok).Count;
+                        Zapret.SaveResults(zapResults);
                         zapStatus = "Работают " + okCount + " из " + res.Count + (best != null ? " · лучшая: " + best.Name : "");
                         if (best != null)
                         {
@@ -2292,7 +2300,15 @@ namespace Veil
                 Zapret.Result r;
                 zapResults.TryGetValue(zapList[i].Id, out r);
                 sb.Append("{\"id\":\"").Append(Esc(zapList[i].Id)).Append("\",\"name\":\"").Append(Esc(zapList[i].Name)).Append("\"");
-                if (r != null) sb.Append(",\"ok\":").Append(r.Ok ? "true" : "false").Append(",\"desc\":\"").Append(Esc(r.Desc)).Append("\"");
+                if (r != null)
+                {
+                    sb.Append(",\"ok\":").Append(r.Ok ? "true" : "false");
+                    sb.Append(",\"desc\":\"").Append(Esc(r.Status)).Append("\"");
+                    sb.Append(",\"yt\":\"").Append(Esc(r.Youtube.Desc)).Append("\"");
+                    sb.Append(",\"dc\":\"").Append(Esc(r.Discord.Desc)).Append("\"");
+                    sb.Append(",\"icmp\":\"").Append(Esc(r.IcmpText)).Append("\"");
+                    sb.Append(",\"checks\":\"").Append(r.ChecksOk).Append("/").Append(r.ChecksTotal).Append("\"");
+                }
                 sb.Append("}");
             }
             sb.Append("]}");

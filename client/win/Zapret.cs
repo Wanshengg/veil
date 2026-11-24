@@ -309,6 +309,8 @@ namespace Veil
         {
             string bat = Path.Combine(Root, strategyId);
             string text = File.ReadAllText(bat).TrimStart('\uFEFF').Replace("\r", "");
+            // в .bat команда может быть разбита переносами через «^» — склеиваем, как в оригинале
+            text = text.Replace("^\n", " ");
             string line = null;
             foreach (string l in text.Split('\n'))
             {
@@ -338,15 +340,39 @@ namespace Veil
         public static bool IsRunning { get { return proc != null && !proc.HasExited; } }
         public static string RunningStrategy { get { return IsRunning ? runningStrategy : ""; } }
 
+        // pid нашего winws переживает перезапуск приложения: если он жив,
+        // считаем его своим и гасим при старте, а не ругаемся «чужая копия».
+        public static int OwnPid { get { int p; return int.TryParse(StateGet("pid"), out p) ? p : 0; } }
+
+        public static void StopStale()
+        {
+            int pid = OwnPid;
+            if (pid <= 0) return;
+            try
+            {
+                Process p = Process.GetProcessById(pid);
+                if (p != null && !p.HasExited)
+                {
+                    p.Kill();
+                    p.WaitForExit(2500);
+                    Program.Log("zapret: остановлен прошлый winws (pid " + pid + ")");
+                }
+            }
+            catch { }
+            StateSet("pid", "0");
+        }
+
         public static bool ForeignRunning
         {
             get
             {
                 try
                 {
+                    int own = OwnPid;
                     foreach (Process p in Process.GetProcessesByName("winws"))
                     {
                         if (proc != null && p.Id == proc.Id) continue;
+                        if (own > 0 && p.Id == own) continue;
                         return true;
                     }
                 }
@@ -379,6 +405,7 @@ namespace Veil
                 RedirectStandardError = true,
                 RedirectStandardOutput = true
             };
+            Program.Log("winws cmd: " + exe + " " + start.Arguments);
             Process p2 = new Process { StartInfo = start, EnableRaisingEvents = true };
             p2.ErrorDataReceived += delegate(object s, DataReceivedEventArgs e) { if (e.Data != null) Program.Log("winws: " + e.Data); };
             p2.OutputDataReceived += delegate(object s, DataReceivedEventArgs e) { if (e.Data != null) Program.Log("winws: " + e.Data); };
@@ -386,6 +413,7 @@ namespace Veil
             try { p2.BeginErrorReadLine(); p2.BeginOutputReadLine(); } catch { }
             proc = p2;
             runningStrategy = strategyId;
+            try { StateSet("pid", p2.Id.ToString()); } catch { }
             Thread.Sleep(1100);
             if (p2.HasExited)
             {
@@ -402,6 +430,7 @@ namespace Veil
 
         public static void Stop()
         {
+            StateSet("pid", "0");
             Process p = proc;
             proc = null; runningStrategy = "";
             if (p == null) return;
@@ -411,26 +440,53 @@ namespace Veil
 
         // ── проверка стратегий ──────────────────────────────────────────────
 
+        // Что проверяем: два адреса тремя протоколами + ICMP, как в zapret-client.
+        static readonly string[][] Protocols = {
+            new[] { "HTTP/1.1", "--http1.1" },
+            new[] { "TLS 1.2", "--tlsv1.2", "--tls-max", "1.2" },
+            new[] { "TLS 1.3", "--tlsv1.3", "--tls-max", "1.3" }
+        };
+
+        public class ProbeInfo
+        {
+            public bool Ok; public int Code; public int Ms; public int Passed, Total;
+            public string Raw = "";
+            public string Desc {
+                get
+                {
+                    if (Raw.Length > 0) return Raw;
+                    if (Total == 0) return "—";
+                    if (Passed == 0) return "нет ответа";
+                    return (Code > 0 ? Code + " " : "") + Ms + " мс · " + Passed + "/" + Total;
+                }
+            }
+        }
+
         public class Result
         {
             public string Id = "", Name = "";
             public bool Ok;
             public string Error = "";
-            public int PingMs;
-            public string Desc { get { return Ok ? PingMs + " мс" : (Error.Length > 0 ? Error : "не прошла"); } }
+            public int PingMs, PingPassed, PingTotal;
+            public ProbeInfo Youtube = new ProbeInfo(), Discord = new ProbeInfo();
+            public int ChecksOk, ChecksTotal;
+            public string IcmpText = "";
+            public string Status { get { return Ok ? "Работает" : (Error.Length > 0 ? Error : "не прошла"); } }
+            public string Desc { get { return Ok ? PingMs + " мс" : Status; } }
         }
 
-        // Проверка через curl.exe: он делает IPv4 и не висит на IPv6, в отличие от .NET HttpClient.
-        static bool Probe(string url, int expected, int timeoutMs, out int ms, out string why)
+        // Один запрос curl с параметрами протокола: код ответа и время.
+        static bool CurlOnce(string url, string[] protoArgs, int expected, int timeoutMs, out int code, out int ms)
         {
-            ms = 0; why = "";
+            code = 0; ms = 0;
             try
             {
                 string curl = Path.Combine(Environment.SystemDirectory, "curl.exe");
                 if (!File.Exists(curl)) curl = "curl.exe";
-                var psi = new ProcessStartInfo(curl,
-                    "--ipv4 -s -o NUL --max-time " + Math.Max(1, timeoutMs / 1000) +
-                    " -w \"%{http_code} %{time_total}\" \"" + url + "\"")
+                string args = "--ipv4 -s -o NUL --max-time " + Math.Max(1, timeoutMs / 1000) +
+                              " " + string.Join(" ", protoArgs) +
+                              " -w \"%{http_code} %{time_total}\" \"" + url + "\"";
+                var psi = new ProcessStartInfo(curl, args)
                 {
                     UseShellExecute = false, CreateNoWindow = true,
                     RedirectStandardOutput = true, RedirectStandardError = true
@@ -440,18 +496,70 @@ namespace Veil
                     string outp = p.StandardOutput.ReadToEnd().Trim();
                     p.WaitForExit(timeoutMs + 2000);
                     string[] parts = outp.Split(' ');
-                    int code = 0;
                     int.TryParse(parts.Length > 0 ? parts[0] : "0", out code);
                     double secs = 0;
                     if (parts.Length > 1) double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out secs);
                     ms = (int)Math.Round(secs * 1000);
-                    if (code == 0) { why = "нет ответа"; return false; }
-                    if (expected > 0 && code != expected) { why = "HTTP " + code; return false; }
-                    if (expected == 0 && (code < 200 || code >= 400)) { why = "HTTP " + code; return false; }
-                    return true;
+                }
+                if (code == 0) return false;
+                if (expected > 0) return code == expected;
+                return code >= 200 && code < 400;
+            }
+            catch { return false; }
+        }
+
+        // Метрики по адресу: три протокола, считаем сколько прошло и среднюю задержку.
+        static ProbeInfo ProbeAll(string url, int expected, int timeoutMs)
+        {
+            var info = new ProbeInfo { Total = Protocols.Length };
+            // три протокола параллельно — иначе проверка всех стратегий тянется часами
+            var tasks = new List<Task<int[]>>();
+            foreach (string[] proto in Protocols)
+            {
+                string[] args = proto.Skip(1).ToArray();
+                tasks.Add(Task.Run(delegate()
+                {
+                    int code, ms;
+                    bool ok = CurlOnce(url, args, expected, timeoutMs, out code, out ms);
+                    return new[] { ok ? 1 : 0, code, ms };
+                }));
+            }
+            Task.WaitAll(tasks.ToArray());
+            int sumMs = 0;
+            foreach (Task<int[]> t in tasks)
+            {
+                int[] v = t.Result;
+                if (v[0] == 1) { info.Passed++; sumMs += v[2]; if (info.Code == 0) info.Code = v[1]; }
+                else if (info.Code == 0 && v[1] > 0) info.Code = v[1];
+            }
+            info.Ok = info.Passed > 0;
+            info.Ms = info.Passed > 0 ? sumMs / info.Passed : 0;
+            return info;
+        }
+
+        // ICMP: два пакета, считаем сколько вернулось.
+        static void Ping(string host, out int ms, out int passed, out int total)
+        {
+            ms = 0; passed = 0; total = 2;
+            try
+            {
+                var psi = new ProcessStartInfo("ping", "-n 2 -w 1500 " + host)
+                { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true };
+                using (Process p = Process.Start(psi))
+                {
+                    string outp = p.StandardOutput.ReadToEnd();
+                    p.WaitForExit(6000);
+                    // "Ответ от 142.250.74.206: число байт=32 время=27мс TTL=115"
+                    foreach (Match m in Regex.Matches(outp, "время[=<]\\s*(\\d+)\\s*мс|time[=<]\\s*(\\d+)\\s*ms", RegexOptions.IgnoreCase))
+                    {
+                        int v;
+                        string s = m.Groups[1].Success ? m.Groups[1].Value : m.Groups[2].Value;
+                        if (int.TryParse(s, out v)) { ms += v; passed++; }
+                    }
+                    if (passed > 0) ms = ms / passed;
                 }
             }
-            catch (Exception ex) { why = ex.Message; return false; }
+            catch { }
         }
 
         public static Result CheckOne(string id, string name)
@@ -460,12 +568,20 @@ namespace Veil
             try
             {
                 Start(id);
-                int ms1, ms2; string why1, why2;
-                bool yt = Probe("https://www.youtube.com/generate_204", 204, 7000, out ms1, out why1);
-                bool dc = Probe("https://discord.com/api/v10/gateway", 200, 7000, out ms2, out why2);
-                r.Ok = yt && dc;
-                r.PingMs = r.Ok ? Math.Max(ms1, ms2) : 0;
-                if (!r.Ok) r.Error = !yt ? "youtube: " + why1 : "discord: " + why2;
+                Thread.Sleep(300);   // дать winws встать на поток
+                Task<ProbeInfo> tYt = Task.Run(delegate { return ProbeAll("https://www.youtube.com/generate_204", 204, 6000); });
+                Task<ProbeInfo> tDc = Task.Run(delegate { return ProbeAll("https://discord.com/api/v10/gateway", 200, 6000); });
+                Task.WaitAll(tYt, tDc);
+                r.Youtube = tYt.Result;
+                r.Discord = tDc.Result;
+                Ping("1.1.1.1", out r.PingMs, out r.PingPassed, out r.PingTotal);
+                r.IcmpText = r.PingPassed > 0 ? r.PingMs + " мс · " + r.PingPassed + "/" + r.PingTotal : "—";
+
+                r.ChecksTotal = r.Youtube.Total + r.Discord.Total;
+                r.ChecksOk = r.Youtube.Passed + r.Discord.Passed;
+                r.Ok = r.Youtube.Passed > 0 && r.Discord.Passed > 0;
+                if (!r.Ok)
+                    r.Error = r.Youtube.Passed == 0 ? "youtube: нет ответа" : "discord: нет ответа";
             }
             catch (Exception ex) { r.Ok = false; r.Error = ex.Message; }
             finally { Stop(); }
@@ -482,6 +598,56 @@ namespace Veil
                 results.Add(CheckOne(list[i].Id, list[i].Name));
             }
             return results;
+        }
+
+        // Результаты проверки переживают перезапуск приложения.
+        static string ResultsPath { get { return Path.Combine(Root, "results.ini"); } }
+
+        public static Dictionary<string, Result> LoadResults()
+        {
+            var map = new Dictionary<string, Result>(StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                if (!File.Exists(ResultsPath)) return map;
+                foreach (string line in File.ReadAllLines(ResultsPath))
+                {
+                    string[] f = line.Split('|');
+                    if (f.Length < 6) continue;
+                    var r = new Result { Id = f[0], Name = f[0], Ok = f[1] == "1" };
+                    r.Youtube = new ProbeInfo { Raw = f[2] };
+                    r.Discord = new ProbeInfo { Raw = f[3] };
+                    r.ChecksOk = 0; r.ChecksTotal = 0;
+                    int ok1, ok2;
+                    string[] ch = f[5].Split('/');
+                    if (ch.Length == 2 && int.TryParse(ch[0], out ok1) && int.TryParse(ch[1], out ok2)) { r.ChecksOk = ok1; r.ChecksTotal = ok2; }
+                    r.IcmpText = f[4];
+                    r.Error = f.Length > 6 ? f[6] : "";
+                    map[r.Id] = r;
+                }
+            }
+            catch (Exception ex) { Program.Log("zapret results load: " + ex.Message); }
+            return map;
+        }
+
+        public static void SaveResults(Dictionary<string, Result> map)
+        {
+            try
+            {
+                var sb = new StringBuilder();
+                foreach (var kv in map)
+                {
+                    Result r = kv.Value;
+                    sb.Append(kv.Key.Replace("|", "/")).Append('|')
+                      .Append(r.Ok ? "1" : "0").Append('|')
+                      .Append(r.Youtube.Desc.Replace("|", "/")).Append('|')
+                      .Append(r.Discord.Desc.Replace("|", "/")).Append('|')
+                      .Append(r.IcmpText.Replace("|", "/")).Append('|')
+                      .Append(r.ChecksOk).Append('/').Append(r.ChecksTotal).Append('|')
+                      .Append((r.Error ?? "").Replace("|", "/")).Append('\n');
+                }
+                File.WriteAllText(ResultsPath, sb.ToString(), new UTF8Encoding(false));
+            }
+            catch (Exception ex) { Program.Log("zapret results save: " + ex.Message); }
         }
 
         public static Result Best(List<Result> results)
