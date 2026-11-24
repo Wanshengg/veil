@@ -52,6 +52,20 @@ namespace Veil
                 InitLoader();      // теперь тип CoreWebView2Environment доступен
                 // диагностика: несколько кликов подряд, через ;
                 string clicks = ArgOf(Environment.GetCommandLineArgs(), "--clicks=");
+                string poolAdd = ArgOf(Environment.GetCommandLineArgs(), "--pool-add=");
+                if (poolAdd.Length > 0)
+                {
+                    PoolHost h = PoolHost.Parse(poolAdd);
+                    if (h != null)
+                    {
+                        if (h.IsPublisher) foreach (PoolHost x in PoolRegistry.Load()) x.IsPublisher = false;
+                        PoolRegistry.Add(h);
+                        Program.Log("pool-add: " + h.Label + " @ " + h.Host + (h.IsPublisher ? " (раздатчик)" : ""));
+                    }
+                    return;
+                }
+                string issueCfg = ArgOf(Environment.GetCommandLineArgs(), "--pool-issue=");
+                if (issueCfg.Length > 0) { RunPoolIssue(issueCfg); return; }
                 string delArg = ArgOf(Environment.GetCommandLineArgs(), "--del=");
                 if (delArg.Length > 0) { RunProfileDelete(delArg); return; }
                 string subTest = ArgOf(Environment.GetCommandLineArgs(), "--sub-test=");
@@ -96,6 +110,70 @@ namespace Veil
         {
             foreach (string a in args) if (a.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return a.Substring(prefix.Length);
             return "";
+        }
+
+        // Выдача персонального ключа подписки без интерфейса.
+        // veil.exe --pool-issue=<cfg>  — файл key=value:
+        //   name=друг
+        //   poolurl=<текущий блоб пула>
+        //   signkey=<путь к приватному ключу подписи>
+        //   seed=ru-relay.example.com:10000   sni=se.example.com
+        //   socks=127.0.0.1:1080
+        //   server=<метка>|<host>|<порт>|<юзер>|<секрет>|via|pub
+        static void RunPoolIssue(string cfgPath)
+        {
+            try
+            {
+                string name = "", poolUrl = "", signKey = "", seed = "", seedSni = "", socks = "";
+                var servers = new List<PoolHost>();
+                PoolHost publisher = null;
+
+                foreach (string raw in File.ReadAllLines(cfgPath))
+                {
+                    string line = raw.Trim();
+                    if (line.Length == 0 || line.StartsWith("#")) continue;
+                    int eq = line.IndexOf('=');
+                    if (eq < 0) continue;
+                    string k = line.Substring(0, eq).Trim().ToLowerInvariant(), v = line.Substring(eq + 1).Trim();
+                    if (k == "name") name = v;
+                    else if (k == "poolurl") poolUrl = v;
+                    else if (k == "signkey") signKey = v;
+                    else if (k == "seed") seed = v;
+                    else if (k == "sni") seedSni = v;
+                    else if (k == "socks") socks = v;
+                    else if (k == "server" || k == "publisher")
+                    {
+                        PoolHost h = PoolHost.Parse(v);
+                        if (h == null) { Log("pool-issue: плохая строка " + v); continue; }
+                        if (k == "publisher") { h.IsPublisher = true; publisher = h; }
+                        else servers.Add(h);
+                    }
+                }
+
+                if (signKey.Length > 0 && File.Exists(signKey)) PoolIssue.ImportSignKey(signKey);
+                if (!PoolIssue.HasSignKey) { Log("pool-issue: нет ключа подписи"); return; }
+
+                // текущий список серверов берём из действующего пула
+                string ini = Path.Combine(Engine.Dir, "veil.ini");
+                string mainPsk = "";
+                foreach (string l in File.ReadAllLines(ini))
+                {
+                    int e2 = l.IndexOf('=');
+                    if (e2 > 0 && l.Substring(0, e2).Trim() == "psk") mainPsk = l.Substring(e2 + 1).Trim();
+                }
+                string used;
+                PoolDoc doc = PoolClient.Fetch(new[] { poolUrl }, mainPsk, "", PoolClient.PublicKeyB64, out used);
+                string json = PoolJson.Write(doc);
+                Log("pool-issue: серверов в пуле " + doc.Servers.Count);
+
+                string psk = PoolIssue.NewPsk();
+                PoolIssue.Result r = PoolIssue.Issue(name, psk, servers, publisher,
+                    poolUrl.Substring(0, poolUrl.LastIndexOf('/')), json, seed, seedSni, socks);
+
+                Log("pool-issue log:\n" + r.Log);
+                if (r.Ok) Log("pool-issue KEY: " + r.Key);
+            }
+            catch (Exception ex) { Log("pool-issue: " + ex); }
         }
 
         // Удаление профиля без интерфейса: veil.exe --del=<host:port>
@@ -1062,6 +1140,21 @@ namespace Veil
                                     await System.Threading.Tasks.Task.Delay(350);
                                 }
                             }
+                            // отладочное заполнение полей: --fill=poolWho:test-ui
+                            string fillArg = Program.ArgOf(Environment.GetCommandLineArgs(), "--fill=");
+                            if (fillArg.Length > 0)
+                            {
+                                foreach (string pair in fillArg.Split(';'))
+                                {
+                                    int colon = pair.IndexOf(':');
+                                    if (colon <= 0) continue;
+                                    string fid = pair.Substring(0, colon), fval = pair.Substring(colon + 1);
+                                    await web.CoreWebView2.ExecuteScriptAsync(
+                                        "(() => { const e = document.getElementById(" + Program.QuoteJs(fid) + "); " +
+                                        "if (!e) return 'нет поля'; e.value = " + Program.QuoteJs(fval) + "; return 'ok'; })()");
+                                }
+                                Program.Log("debug fill: " + fillArg);
+                            }
                             // отладочный клик по селектору: veil.exe --click=[data-action=settings]
                             string clickSel = Program.ArgOf(Environment.GetCommandLineArgs(), "--click=");
                             if (clickSel.Length > 0)
@@ -1257,6 +1350,76 @@ namespace Veil
                     string err = Subs.Refresh(core.Profiles, out added, out dropped);
                     Store.Save(core.Profiles);
                     Program.Log("subs manual: +" + added + " -" + dropped + " " + err);
+                    PushSafe();
+                });
+            }
+            else if (cmd == "clip-write")
+            {
+                try { System.Windows.Forms.Clipboard.SetText(Json(raw, "text") ?? ""); }
+                catch (Exception ex) { Program.Log("clip-write: " + ex.Message); }
+            }
+            else if (cmd == "pool-add")
+            {
+                PoolHost h = new PoolHost
+                {
+                    Label = Json(raw, "label") ?? "",
+                    Host = Json(raw, "host") ?? "",
+                    Port = IntOr(Json(raw, "port"), 22),
+                    User = string.IsNullOrEmpty(Json(raw, "user")) ? "root" : Json(raw, "user"),
+                    Secret = Json(raw, "secret") ?? "",
+                    IsPublisher = (Json(raw, "publisher") ?? "") == "true"
+                };
+                if (h.Host.Length == 0) { poolKeyMsg = "Укажи адрес сервера"; PushSafe(); return; }
+                if (h.IsPublisher)
+                    foreach (PoolHost x in poolHosts) x.IsPublisher = false;
+                PoolRegistry.Add(h);
+                poolHosts = PoolRegistry.Load();
+                poolKeyMsg = "В подписку добавлен: " + (h.Label.Length > 0 ? h.Label : h.Host);
+                PushSafe();
+            }
+            else if (cmd == "pool-del")
+            {
+                string host = Json(raw, "host") ?? "";
+                List<PoolHost> list = PoolRegistry.Load();
+                int n = list.RemoveAll(x => string.Equals(x.Host, host, StringComparison.OrdinalIgnoreCase));
+                PoolRegistry.Save(list);
+                poolHosts = list;
+                poolKeyMsg = n > 0 ? "Удалён из подписки: " + host : "Такого сервера нет";
+                PushSafe();
+            }
+            else if (cmd == "pool-issue")
+            {
+                string who = Json(raw, "name") ?? "";
+                if (who.Trim().Length == 0) { poolKeyMsg = "Впиши имя человека"; PushSafe(); return; }
+                if (poolHosts.Count == 0) { poolKeyMsg = "Сначала добавь серверы подписки"; PushSafe(); return; }
+                PoolHost pub = poolHosts.Find(x => x.IsPublisher);
+                if (pub == null) { poolKeyMsg = "Отметь один сервер как раздатчик списка"; PushSafe(); return; }
+                if (!PoolIssue.HasSignKey) { poolKeyMsg = "Нет ключа подписи пула"; PushSafe(); return; }
+
+                // всё остальное берём из ключа, которым пользуемся сами
+                Profile cur = core.Profiles.Find(x => x.Sub.Length > 0) ?? core.Current;
+                KeyInfo ki = cur != null ? KeyInfo.Parse(cur.Key) : null;
+                if (ki == null || ki.Sub.Length == 0) { poolKeyMsg = "Нет ключа подписки: сначала добавь свой"; PushSafe(); return; }
+
+                string subUrl = ki.Subs.Length > 0 ? ki.Subs[0] : ki.Sub;
+                string baseUrl = subUrl.Substring(0, subUrl.LastIndexOf('/'));
+                string seedSni = ki.Sni, seed = ki.Seed;
+                string mainPsk = ki.Psk;
+
+                poolKeyMsg = "Выдаю ключ…"; poolIssuedKey = ""; PushSafe();
+                ThreadPool.QueueUserWorkItem(delegate {
+                    try
+                    {
+                        string used;
+                        PoolDoc doc = PoolClient.Fetch(new[] { subUrl }, mainPsk, ki.Pin, ki.Pk, out used);
+                        string json = PoolJson.Write(doc);
+                        string pskNew = PoolIssue.NewPsk();
+                        PoolIssue.Result r = PoolIssue.Issue(who, pskNew, poolHosts, pub, baseUrl, json, seed, seedSni, "");
+                        poolIssuedKey = r.Ok ? r.Key : "";
+                        poolKeyMsg = r.Ok ? "Ключ выдан: " + who + ". Отправь строку человеку." : r.Log;
+                        Program.Log("pool-issue(ui): " + r.Log.Replace("\n", " | "));
+                    }
+                    catch (Exception ex) { poolKeyMsg = "Ошибка: " + ex.Message; }
                     PushSafe();
                 });
             }
@@ -1602,6 +1765,8 @@ namespace Veil
         string srvHost = "", srvUser = "", srvPin = "", srvStatus = "", srvEnteredSecret = "";
         List<string> srvKeys = new List<string>();
         bool srvBusy = false, srvInstalled = false;
+        List<PoolHost> poolHosts = PoolRegistry.Load();
+        string poolKeyMsg = "", poolIssuedKey = "", poolBase = "";
 
         static int IntOr(string s, int def) { int v; return int.TryParse(s, out v) && v > 0 && v < 65536 ? v : def; }
         static string Short(Exception ex) { string m = ex.Message; return m.Length > 160 ? m.Substring(0, 160) : m; }
@@ -1733,6 +1898,17 @@ namespace Veil
               .Append("\",\"srvUser\":\"").Append(Esc(srvUser.Length > 0 ? srvUser : (SshCreds.User.Length > 0 ? SshCreds.User : "root")))
               .Append("\",\"srvSaved\":").Append(SshCreds.Has ? "true" : "false")
               .Append(",\"srvInstalled\":").Append(srvInstalled ? "true" : "false");
+            sb.Append(",\"poolServers\":[");
+            for (int i = 0; i < poolHosts.Count; i++)
+            {
+                if (i > 0) sb.Append(',');
+                sb.Append("{\"label\":\"").Append(Esc(poolHosts[i].Label.Length > 0 ? poolHosts[i].Label : poolHosts[i].Host))
+                  .Append("\",\"host\":\"").Append(Esc(poolHosts[i].Host))
+                  .Append("\",\"publisher\":").Append(poolHosts[i].IsPublisher ? "true" : "false").Append("}");
+            }
+            sb.Append("],\"poolKeyMsg\":\"").Append(Esc(poolKeyMsg))
+              .Append("\",\"poolKey\":\"").Append(Esc(poolIssuedKey))
+              .Append("\",\"poolHasSignKey\":").Append(PoolIssue.HasSignKey ? "true" : "false");
             sb.Append(",\"srvPoolCount\":").Append(core.Profiles.FindAll(x => x.Sub.Length > 0).Count);
             sb.Append(",\"srvOwnCount\":").Append(core.Profiles.FindAll(x => x.Sub.Length == 0).Count);
             sb.Append(",\"srvKeys\":[");

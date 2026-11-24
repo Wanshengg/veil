@@ -273,6 +273,37 @@ namespace Veil
         }
     }
 
+    public static class PoolJson
+    {
+        public static string Write(PoolDoc doc)
+        {
+            var sb = new StringBuilder();
+            sb.Append("{\n  \"v\": ").Append(doc.V).Append(",\n");
+            sb.Append("  \"pool\": \"").Append(doc.Name).Append("\",\n");
+            sb.Append("  \"issued\": \"").Append(doc.Issued).Append("\",\n");
+            sb.Append("  \"ttl\": ").Append(doc.Ttl).Append(",\n  \"servers\": [\n");
+            for (int i = 0; i < doc.Servers.Count; i++)
+            {
+                PoolServer s = doc.Servers[i];
+                sb.Append("    {\"id\": \"").Append(s.Id).Append("\", \"host\": \"").Append(s.Host)
+                  .Append("\", \"ports\": [");
+                for (int j = 0; j < s.Ports.Count; j++)
+                {
+                    if (j > 0) sb.Append(", ");
+                    sb.Append(s.Ports[j]);
+                }
+                sb.Append("], \"sni\": \"").Append(s.Sni).Append("\", \"cc\": \"").Append(s.Cc)
+                  .Append("\", \"country\": \"").Append(s.Country).Append("\"");
+                if (s.City.Length > 0) sb.Append(", \"city\": \"").Append(s.City).Append("\"");
+                sb.Append(", \"up\": ").Append(s.Up ? "true" : "false").Append("}");
+                if (i < doc.Servers.Count - 1) sb.Append(',');
+                sb.Append('\n');
+            }
+            sb.Append("  ]\n}\n");
+            return sb.ToString();
+        }
+    }
+
     // ── подписка: один ключ → несколько профилей ───────────────────────────
 
     static class Subs

@@ -143,7 +143,8 @@
       keyPaste() { snap.keyMsg = "Макет: ключ из буфера не читается"; emit(); },
       keyAdd() {},
       srvConnect() { snap.srvStatus = "Макет: SSH недоступен"; emit(); },
-      srvInstall() {}, srvKeys() {}, srvIssue() {}, srvRevoke() {}, srvForget() {}, refreshSubs() {}, profileDel() {}
+      srvInstall() {}, srvKeys() {}, srvIssue() {}, srvRevoke() {}, srvForget() {}, refreshSubs() {}, profileDel() {},
+      poolAdd() {}, poolDel() {}, poolIssue() {}, clipWrite() {}
     };
   })();
 
@@ -411,6 +412,30 @@
       </div>
 
       <div class="group">
+        <div class="caps">Серверы подписки${(snap.poolServers || []).some((h) => h.publisher) ? " · ★ раздатчик" : ""}</div>
+        ${(snap.poolServers || []).map((h) => `
+          <div class="row clickable" data-action="pool-del" data-host="${esc(h.host)}">
+            <span class="t">${esc(h.label)}${h.publisher ? " ★" : ""}</span>
+            <span class="v">×</span>
+          </div>`).join("") || `<p class="msg">Пока пусто: добавь серверы, на которых выдавать ключи.</p>`}
+        <div class="actions">
+          <button class="btn outline" data-action="pool-add" ${busy ? "disabled" : ""}>Добавить сервер из формы выше</button>
+        </div>
+        <div class="row"><span class="t">Этот сервер — раздатчик списка</span>${switchBtn(!!S.poolPublisher, "pool-publisher", "Раздатчик списка")}</div>
+        <label class="field">
+          <span class="caps">Имя человека</span>
+          <input id="poolWho" type="text" placeholder="мама, друг, тест" ${busy ? "disabled" : ""}>
+        </label>
+        <div class="actions">
+          <button class="btn filled" data-action="pool-issue" ${busy ? "disabled" : ""}>Выдать ключ подписки</button>
+        </div>
+        ${snap.poolKeyMsg ? `<p class="msg">${esc(snap.poolKeyMsg)}</p>` : ""}
+        ${snap.poolKey ? `
+          <div class="keybox">${esc(snap.poolKey)}</div>
+          <div class="actions"><button class="btn outline" data-action="pool-copy">Скопировать ключ</button></div>` : ""}
+      </div>
+
+      <div class="group">
         <div class="caps">Ключи</div>
         ${keys.length
           ? keys.map((k) => `<div class="row"><span class="t">${esc(k)}</span><button class="btn outline" style="height:36px;width:auto;padding:0 12px;font-size:13px" data-action="srv-revoke" data-name="${esc(k)}">Отозвать</button></div>`).join("")
@@ -494,7 +519,9 @@
       snap.settings.theme,
       snap.error || "", snap.keyMsg || "", snap.srvStatus || "", snap.srvBusy ? 1 : 0,
       snap.srvInstalled ? 1 : 0, snap.srvSaved ? 1 : 0,
-      (snap.srvKeys || []).join(","), servers.length
+      (snap.srvKeys || []).join(","), servers.length,
+      (snap.poolServers || []).map((h) => h.host + (h.publisher ? "*" : "")).join(","),
+      snap.poolKeyMsg || "", snap.poolKey || "", S.poolPublisher ? 1 : 0
     ].join("|");
 
     if (key !== S.lastKey) {
@@ -614,6 +641,24 @@
     }
     if (a === "srv-revoke") return adapter.srvRevoke(el.dataset.name || "");
     if (a === "srv-forget") return adapter.srvForget();
+    if (a === "pool-publisher") { S.poolPublisher = !S.poolPublisher; S.lastKey = ""; return render(); }
+    if (a === "pool-add") {
+      const get = (id) => { const e = document.getElementById(id); return e ? e.value.trim() : ""; };
+      if (!get("srvHost")) return;
+      adapter.poolAdd({
+        label: get("srvHost"), host: get("srvHost"), port: get("srvPort") || "22",
+        user: get("srvUser") || "root", secret: get("srvSecret"),
+        publisher: S.poolPublisher ? "true" : "false"
+      });
+      return;
+    }
+    if (a === "pool-del") return adapter.poolDel(el.dataset.host || "");
+    if (a === "pool-issue") {
+      const who = (document.getElementById("poolWho") || {}).value || "";
+      adapter.poolIssue(who.trim());
+      return;
+    }
+    if (a === "pool-copy") { adapter.clipWrite(S.snap.poolKey || ""); return; }
   });
 
   document.addEventListener("change", (e) => {

@@ -387,3 +387,11 @@ html:not(.ready) *, html:not(.ready) *::before, html:not(.ready) *::after {
 /* приветственный экран: две кнопки стопкой */
 .onboarding-actions { display: grid; gap: 12px; }
 .onboarding-note { margin-top: 16px; line-height: 1.5; }
+
+/* выданный ключ подписки: моноширинный блок с переносом */
+.keybox {
+  font-family: var(--mono); font-size: 11px; line-height: 1.45;
+  color: var(--secondary); padding: 12px 0 0;
+  border-top: 1px solid var(--rule); margin-top: 12px;
+  overflow-wrap: anywhere; user-select: all;
+}

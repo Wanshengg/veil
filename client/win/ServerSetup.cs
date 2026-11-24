@@ -15,6 +15,9 @@ namespace Veil
         public string User = "root";
         public string Password = "";
         public string KeyPath = "";   // приватный ключ, если вместо пароля
+        public string ProxyType = ""; // "" | socks5 — заходить через локальный туннель
+        public string ProxyHost = "";
+        public int ProxyPort;
 
         public ConnectionInfo Build()
         {
@@ -28,7 +31,7 @@ namespace Veil
             }
             if (!string.IsNullOrEmpty(Password) || methods.Count == 0)
                 methods.Add(new PasswordAuthenticationMethod(User, Password));
-            var ci = new ConnectionInfo(Host, Port, User, methods.ToArray());
+            ConnectionInfo ci = new ConnectionInfo(Host, Port, User, methods.ToArray());
             ci.Timeout = TimeSpan.FromSeconds(20);
             return ci;
         }
@@ -151,6 +154,25 @@ namespace Veil
                 + " && cat /opt/veil/keys.txt.tmp >> /opt/veil/keys.txt && rm -f /opt/veil/keys.txt.tmp"
                 + " && chown root:veil /opt/veil/keys.txt && chmod 640 /opt/veil/keys.txt && systemctl reload veil");
             return Encode(host + ":" + port + "|" + (string.IsNullOrEmpty(sni) ? host : sni) + "|chrome|" + psk, pin);
+        }
+
+        // Добавить готовый PSK (выдача персонального ключа подписки).
+        public static void AddKey(SshClient c, string name, string psk)
+        {
+            string n = Safe(name);
+            Run(c, "grep -q '^" + n + ":' /opt/veil/keys.txt 2>/dev/null && sed -i " + Quote("/^" + n + ":/d") + " /opt/veil/keys.txt || true; " +
+                    "printf '%s:%s\\n' " + Quote(n) + " " + Quote(psk) + " >> /opt/veil/keys.txt"
+                    + " && chown root:veil /opt/veil/keys.txt && chmod 640 /opt/veil/keys.txt"
+                    + " && systemctl reload veil");
+        }
+
+        // Положить блоб пула на раздатчик.
+        public static void PublishBlob(SshClient c, byte[] blob, string name)
+        {
+            Run(c, "mkdir -p /var/www/api/static/data");
+            Upload(c, blob, "/var/www/api/static/data/" + name);
+            Run(c, "chown www-data:www-data /var/www/api/static/data/" + name + " && chmod 644 /var/www/api/static/data/" + name
+                 + " && ls -1t /var/www/api/static/data | tail -n +11 | xargs -r -I{} rm -f /var/www/api/static/data/{}");
         }
 
         public static void Revoke(SshClient c, string name)
