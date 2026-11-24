@@ -1448,6 +1448,39 @@ namespace Veil
                     PushSafe();
                 });
             }
+            else if (cmd == "pool-issue-one")
+            {
+                string who = Json(raw, "name") ?? "";
+                if (who.Trim().Length == 0) { poolKeyMsg = "Впиши имя человека"; PushSafe(); return; }
+                PoolHost ru = poolHosts.Find(x => x.Role == "ru" && !x.IsPublisher);
+                if (ru == null) { poolKeyMsg = "Нет РУ-сервера: отметь его в «Создать новый сервер»"; PushSafe(); return; }
+
+                Profile cur2 = core.Profiles.Find(x => x.Sub.Length > 0) ?? core.Current;
+                KeyInfo ki2 = cur2 != null ? KeyInfo.Parse(cur2.Key) : null;
+                if (ki2 == null || ki2.Sub.Length == 0) { poolKeyMsg = "Нет ключа подписки: сначала добавь свой"; PushSafe(); return; }
+                string subUrl2 = ki2.Subs.Length > 0 ? ki2.Subs[0] : ki2.Sub;
+
+                List<PoolHost> hosts2 = poolHosts;
+                poolKeyMsg = "Выдаю ключ…"; poolIssuedKey = ""; PushSafe();
+                ThreadPool.QueueUserWorkItem(delegate {
+                    try
+                    {
+                        string used; PoolDoc doc = PoolClient.Fetch(new[] { subUrl2 }, ki2.Psk, ki2.Pin, ki2.Pk, out used);
+                        PoolServer ruEntry = doc.Servers.Find(s => string.Equals(s.Cc, "RU", StringComparison.OrdinalIgnoreCase))
+                                             ?? doc.Servers.Find(s => s.Host.IndexOf(ru.Host, StringComparison.Ordinal) >= 0);
+                        if (ruEntry == null) { poolKeyMsg = "В пуле нет РУ-сервера"; PushSafe(); return; }
+                        string endpoint = ruEntry.Host + ":" + (ruEntry.Ports.Count > 0 ? ruEntry.Ports[0].ToString() : "8443");
+                        string pskNew = PoolIssue.NewPsk();
+                        PoolIssue.Result r = PoolIssue.IssueOne(who, pskNew, ru, endpoint, ruEntry.Sni, "");
+                        poolIssuedKey = r.Ok ? r.Key : "";
+                        poolKeyMsg = r.Ok ? "Ключ на РУ-сервер выдан: " + who : r.Log;
+                        Program.Log("pool-issue-one(ui): " + r.Log.Replace("\n", " | "));
+                        if (r.Ok) poolNames = PoolIssue.NamesOnServers(hosts2, hosts2.Find(x => x.IsPublisher), "", out used);
+                    }
+                    catch (Exception ex) { poolKeyMsg = "Ошибка: " + ex.Message; }
+                    PushSafe();
+                });
+            }
             else if (cmd == "pool-issue")
             {
                 string who = Json(raw, "name") ?? "";

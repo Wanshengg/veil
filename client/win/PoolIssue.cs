@@ -286,6 +286,42 @@ namespace Veil
             return res;
         }
 
+        // Простой ключ на один сервер (РУ): без списка, без личного блоба.
+        public static Result IssueOne(string name, string psk, PoolHost server, string endpoint, string sni, string socks)
+        {
+            var res = new Result();
+            var sb = new StringBuilder();
+            try
+            {
+                string safeName = MakeSafe(name);
+                if (server == null) throw new InvalidOperationException("нет РУ-сервера в списке");
+                if (endpoint.Length == 0) throw new InvalidOperationException("не нашёл адрес РУ-сервера в пуле");
+
+                string pin = "";
+                using (SshClient c = ServerSetup.Connect(server.ToTarget(socks), 20))
+                {
+                    ServerSetup.AddKey(c, safeName, psk);
+                    pin = ServerSetup.Pin(c);
+                    sb.AppendLine("ключ добавлен: " + (server.Label.Length > 0 ? server.Label : server.Host));
+                }
+
+                string key = KeyInfo.MakeV2("", endpoint, sni, "chrome", psk, pin, "");
+                res.Key = key;
+                res.Ok = true;
+                IssuedKeys.Add(safeName, "");
+                sb.AppendLine("pin: " + (pin.Length > 0 ? pin.Substring(0, 16) + "…" : "нет"));
+                sb.AppendLine("готово");
+            }
+            catch (Exception ex)
+            {
+                res.Log = sb.ToString() + "ОШИБКА: " + ex.Message;
+                Program.Log("pool issue-one: " + ex);
+                return res;
+            }
+            res.Log = sb.ToString();
+            return res;
+        }
+
         // Список имён, которые реально лежат в keys.txt на серверах
         // (переживает переустановку приложения: читаем с серверов, а не из локального файла).
         public static List<string> NamesOnServers(List<PoolHost> servers, PoolHost publisher, string socks, out string log)

@@ -144,7 +144,7 @@
       keyAdd() {},
       srvConnect() { snap.srvStatus = "Макет: SSH недоступен"; emit(); },
       srvInstall() {}, srvKeys() {}, srvIssue() {}, srvRevoke() {}, srvForget() {}, refreshSubs() {}, profileDel() {},
-      poolAdd() {}, poolDel() {}, poolIssue() {}, clipWrite() {}, poolKeys() {}, poolRevoke() {}
+      poolAdd() {}, poolDel() {}, poolIssue() {}, clipWrite() {}, poolKeys() {}, poolRevoke() {}, poolIssueOne() {}
     };
   })();
 
@@ -428,6 +428,21 @@
     </section>`;
   };
 
+  /* ── подтверждение отзыва ─────────────────────────────────────────────── */
+
+  const viewRevokeConfirm = () => `
+    <div class="scrim" data-action="close-sheet"></div>
+    <div class="sheet" role="dialog" aria-label="Отзыв ключа">
+      <div class="head"><div class="caps">Отзыв ключа</div></div>
+      <div class="body">
+        <p class="facts">Ключ «${esc(S.revokeName || "")}» перестанет работать на всех серверах списка. Вернуть его можно только новой выдачей.</p>
+        <div class="actions">
+          <button class="btn danger" data-action="revoke-yes">Отозвать</button>
+          <button class="btn outline" data-action="close-sheet">Отмена</button>
+        </div>
+      </div>
+    </div>`;
+
   /* ── мои серверы: что уже сделано + выдача ключей ─────────────────────── */
 
   const roleText = (h) => h.publisher ? "раздатчик списка" : (h.role === "ru" ? "РУ · каскад" : "зарубежный");
@@ -478,9 +493,13 @@
           <input id="poolWho" type="text" placeholder="мама, друг, тест" ${busy ? "disabled" : ""}>
         </label>
         <div class="actions">
-          <button class="btn filled" data-action="pool-issue" ${busy || !list.length ? "disabled" : ""}>Выдать ключ подписки</button>
+          <button class="btn filled" data-action="pool-issue" ${busy || !list.length ? "disabled" : ""}>Выдать подписку</button>
         </div>
-        <p class="msg">Ключ добавится на все серверы списка и вернётся строкой — её и отправь человеку.</p>
+        <p class="msg">Строка на все серверы списка: человек видит Россию, Швецию и Финляндию, переключается сам.</p>
+        <div class="actions">
+          <button class="btn outline" data-action="pool-issue-one" ${busy || !list.length ? "disabled" : ""}>Ключ на РУ-сервер</button>
+        </div>
+        <p class="msg">Один сервер: подключение сразу, без выбора городов. Для тех, кому нужен только российский выход.</p>
         ${snap.poolKeyMsg ? `<p class="msg">${esc(snap.poolKeyMsg)}</p>` : ""}
         ${snap.poolKey ? `
           <div class="keybox">${esc(snap.poolKey)}</div>
@@ -547,6 +566,7 @@
     const overlay = $("#overlay");
     const overlayHtml = S.sheet === "cities" ? viewCities(snap, servers)
       : S.sheet === "dns" ? viewDns(snap)
+      : S.sheet === "revoke" ? viewRevokeConfirm()
       : S.sheet === "logs" ? viewLogs(snap)
       : "";
 
@@ -560,7 +580,7 @@
       (snap.srvKeys || []).join(","), servers.length,
       (snap.poolServers || []).map((h) => h.host + (h.publisher ? "*" : "") + (h.role || "")).join(","),
       snap.poolKeyMsg || "", snap.poolKey || "", S.newRu ? 1 : 0, S.newPub ? 1 : 0,
-      (snap.poolNames || []).join(","), snap.poolNamesBusy ? 1 : 0
+      (snap.poolNames || []).join(","), snap.poolNamesBusy ? 1 : 0, S.revokeName || ""
     ].join("|");
 
     if (key !== S.lastKey) {
@@ -687,7 +707,20 @@
       return render();
     }
     if (a === "pool-refresh") return adapter.poolKeys();
-    if (a === "pool-revoke") return adapter.poolRevoke(el.dataset.name || "");
+    if (a === "pool-revoke") { S.revokeName = el.dataset.name || ""; S.sheet = "revoke"; S.lastKey = ""; return render(); }
+    if (a === "revoke-yes") {
+      const nm = S.revokeName || "";
+      S.sheet = ""; S.revokeName = ""; S.lastKey = "";
+      render();
+      if (nm) adapter.poolRevoke(nm);
+      return;
+    }
+    if (a === "pool-issue-one") {
+      const who = (document.getElementById("poolWho") || {}).value || "";
+      if (!who.trim()) return adapter.poolIssue("");   // покажет «впиши имя»
+      adapter.poolIssueOne(who.trim());
+      return;
+    }
     if (a === "newserver") { S.screen = "server"; return render(); }
     if (a === "new-ru") { S.newRu = !S.newRu; S.lastKey = ""; return render(); }
     if (a === "new-pub") { S.newPub = !S.newPub; S.lastKey = ""; return render(); }
