@@ -1455,7 +1455,7 @@ namespace Veil
                             poolHosts = PoolRegistry.Load();
                             // список сразу доступен и на будущее
                             string dir = Path.Combine(Engine.Dir, "pool_url.txt");
-                            File.WriteAllText(dir, r.PoolUrl);
+                            File.WriteAllText(dir, r.PoolUrl + "/" + r.Blob);
                         }
                         cascadeStep = r.Ok ? "Готово" : "Ошибка";
                         Program.Log("cascade: " + r.Log.Replace("\n", " | "));
@@ -2075,7 +2075,13 @@ namespace Veil
                   .Append("\",\"publisher\":").Append(poolHosts[i].IsPublisher ? "true" : "false")
                   .Append(",\"role\":\"").Append(Esc(poolHosts[i].Role)).Append("\"}");
             }
-            sb.Append("],\"cascadeBusy\":").Append(cascadeBusy ? "true" : "false");
+            {
+                string signPk = "";
+                try { if (PoolIssue.HasSignKey) signPk = PoolIssue.PublicKey; } catch { }
+                sb.Append("],\"signKey\":\"").Append(Esc(signPk)).Append("\"");
+                sb.Append(",\"signKeyMatches\":").Append(signPk.Length > 0 && signPk == PoolClient.PublicKeyB64 ? "true" : "false");
+            }
+            sb.Append(",\"cascadeBusy\":").Append(cascadeBusy ? "true" : "false");
             sb.Append(",\"cascadeStep\":\"").Append(Esc(cascadeStep)).Append("\"");
             sb.Append(",\"cascadeResult\":\"").Append(Esc(cascadeResult)).Append("\"");
             sb.Append(",\"poolNames\":[");

@@ -237,6 +237,25 @@ namespace Veil
             return root.TrimEnd('/');
         }
 
+        // HTTPS для раздатчика: certbot ставит сертификат на домен РУ-сервера.
+        public static bool EnsureHttps(SshClient c, string domain, System.Text.StringBuilder log)
+        {
+            string ok = Run(c, "test -f /etc/letsencrypt/live/" + domain + "/fullchain.pem && echo yes || echo no", 30);
+            if (ok.IndexOf("yes") < 0)
+            {
+                log.AppendLine("HTTPS: ставлю certbot…");
+                Run(c, "export DEBIAN_FRONTEND=noninteractive; (apt-get install -y -qq certbot python3-certbot-nginx) || (dnf install -y certbot python3-certbot-nginx) || true", 900);
+                string iss = Run(c, "certbot --nginx -d " + domain + " --agree-tos --register-unsafely-without-email --redirect -n 2>&1 | tail -3", 300);
+                log.AppendLine("certbot: " + iss.Replace("\n", " ").Trim());
+                ok = Run(c, "test -f /etc/letsencrypt/live/" + domain + "/fullchain.pem && echo yes || echo no", 30);
+            }
+            else log.AppendLine("HTTPS: сертификат уже есть");
+
+            if (ok.IndexOf("yes") < 0) { log.AppendLine("HTTPS: не вышло, раздача по http"); return false; }
+            Run(c, "nginx -t >/dev/null 2>&1 && systemctl reload nginx || true");
+            return true;
+        }
+
         // Свободный порт для релея (по умолчанию с 10000).
         public static int FreePort(SshClient c, int from)
         {

@@ -229,15 +229,21 @@ namespace Veil
                     }
                 }
                 string pubRoot = "/var/www/api";
+                string ruHostForRelay = string.IsNullOrEmpty(ruDomain) ? ru.Host : ruDomain;
+                string fHost = string.IsNullOrEmpty(foreignDomain) ? foreign.Host : foreignDomain;
+                int port = 0;
+                bool https = false;
+
                 using (SshClient cRu = ServerSetup.Connect(ru.ToTarget(socks), 25))
                 {
                     ServerSetup.EnsureNginxStream(cRu);
                     pubRoot = ServerSetup.EnsurePublisher(cRu, ruDomain);
                     sb.AppendLine("РУ: nginx + раздатчик готовы");
 
-                    string ruHostForRelay = string.IsNullOrEmpty(ruDomain) ? ru.Host : ruDomain;
-                    string fHost = string.IsNullOrEmpty(foreignDomain) ? foreign.Host : foreignDomain;
-                    int port = ServerSetup.FindRelay(cRu, fHost, 443);
+                    // HTTPS на РУ не поднимаем: там же живёт veil, а порт 80 занят
+                    // дефолтным сайтом — раздача списков идёт по http, блоб зашифрован.
+
+                    port = ServerSetup.FindRelay(cRu, fHost, 443);
                     if (port > 0) sb.AppendLine("релей уже есть: " + port + " → " + fHost + ":443");
                     else
                     {
@@ -250,31 +256,67 @@ namespace Veil
                     string subj = ServerSetup.RelaySubject(cRu, port, fHost);
                     sb.AppendLine("проверка сертификата через релей: " + (subj.Length > 0 ? subj : "не ответил"));
                     if (subj.Length == 0) throw new InvalidOperationException("каскад не отвечает");
-
-                    // новая запись каскада
-                    o.ForeignEntry = "{ \"id\": \"via-ru\", \"host\": \"" + ruHostForRelay +
-                                     "\", \"ports\": [" + port + "], \"sni\": \"" + fHost +
-                                     "\", \"cc\": \"" + (foreignCc.Length > 0 ? foreignCc : "XX") +
-                                     "\", \"country\": \"" + (foreignCountry.Length > 0 ? foreignCountry : "Зарубежный") +
-                                     "\", \"city\": \"через РУ\", \"up\": true }";
-                    o.RuEntry = "{ \"id\": \"ru\", \"host\": \"" + ruHostForRelay +
-                                "\", \"ports\": [8443, 2083, 9443], \"sni\": \"" + ruHostForRelay +
-                                "\", \"cc\": \"RU\", \"country\": \"Россия\", \"city\": \"Россия\", \"up\": true }";
-                    o.PoolUrl = (string.IsNullOrEmpty(ruDomain) ? "http://" + ru.Host : "https://" + ruDomain) + "/static/data";
-                    sb.AppendLine("адрес раздатчика: " + o.PoolUrl);
                 }
 
-                // 3. пул: РУ как выход + каскад на зарубежный
-                string json = "{\n  \"v\": 2,\n  \"pool\": \"veil\",\n  \"issued\": \"" + DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ") +
-                              "\",\n  \"ttl\": 21600,\n  \"servers\": [\n    " + o.RuEntry + ",\n    " + o.ForeignEntry + "\n  ]\n}\n";
+                var ruSrv = new PoolServer { Id = "ru", Host = ruHostForRelay, Sni = ruHostForRelay, Cc = "RU", Country = "Россия", City = "Россия", Up = true };
+                ruSrv.Ports.AddRange(new[] { 8443, 2083, 9443 });
+                var viaSrv = new PoolServer
+                {
+                    Id = "via-ru", Host = ruHostForRelay, Sni = fHost,
+                    Cc = foreignCc.Length > 0 ? foreignCc : "XX",
+                    Country = foreignCountry.Length > 0 ? foreignCountry : "Зарубежный",
+                    City = "через РУ", Up = true
+                };
+                viaSrv.Ports.Add(port);
+
+                o.PoolUrl = "http://" + (ruDomain.Length > 0 ? ruDomain : ru.Host) + "/static/data";
+                sb.AppendLine("адрес раздатчика: " + o.PoolUrl);
+
+                // 3. пул: РУ как выход + каскад на зарубежный, с сохранением прежних серверов
+                var doc = new PoolDoc { Name = "veil", Issued = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"), Ttl = 21600 };
+                string prev = "";
+                try
+                {
+                    string prevUrl = Path.Combine(Engine.Dir, "pool_url.txt");
+                    if (File.Exists(prevUrl))
+                    {
+                        prev = File.ReadAllText(prevUrl).Trim();
+                        if (prev.EndsWith("/static/data", StringComparison.Ordinal)) prev = "";
+                    }
+                }
+                catch { }
+                if (prev.Length > 0)
+                {
+                    try
+                    {
+                        string used2;
+                        PoolDoc old = PoolClient.Fetch(new[] { prev }, ruPsk, "", PoolIssue.PublicKey, out used2);
+                        foreach (PoolServer s in old.Servers)
+                        {
+                            bool sameRu = s.Id == "ru";
+                            bool sameVia = s.Id == "via-ru" && string.Equals(s.Sni, fHost, StringComparison.OrdinalIgnoreCase);
+                            if (sameRu || sameVia) continue;
+                            doc.Servers.Add(s);
+                        }
+                        sb.AppendLine("прежний пул: серверов " + old.Servers.Count + " → остаётся " + doc.Servers.Count);
+                    }
+                    catch (Exception ex) { sb.AppendLine("прежний пул не прочитан: " + ex.Message); }
+                }
+                doc.Servers.Insert(0, ruSrv);
+                doc.Servers.Add(viaSrv);
+                o.RuEntry = ruSrv.Endpoint;
+                o.ForeignEntry = viaSrv.Endpoint;
+                string json = PoolJson.Write(doc);
                 byte[] blob = PoolCodec.Pack(json, LoadSignKey(), ruPsk);
                 string blobName = "pool-" + DateTime.UtcNow.ToString("yyMMddHHmm");
                 using (SshClient cRu2 = ServerSetup.Connect(ru.ToTarget(socks), 25))
                 {
                     ServerSetup.PublishBlob(cRu2, blob, blobName, pubRoot);
-                    string code = ServerSetup.Run(cRu2, "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1/static/data/" + blobName, 30).Trim();
-                    sb.AppendLine("отдача по http: " + code);
-                    if (code != "200") throw new InvalidOperationException("блоб не отдаётся по http (код " + code + ")");
+                    string vhost = ruDomain.Length > 0 ? ruDomain : "_";
+                    string code = ServerSetup.Run(cRu2, "curl -s -o /dev/null -w '%{http_code}' -H 'Host: " + vhost +
+                                                       "' http://127.0.0.1/static/data/" + blobName, 40).Trim();
+                    sb.AppendLine("отдача списка: " + code + " (" + o.PoolUrl + ")");
+                    if (code != "200") throw new InvalidOperationException("блоб не отдаётся (код " + code + ")");
                 }
                 o.Blob = blobName;
                 sb.AppendLine("пул выложен: " + blobName + " (" + blob.Length + " байт)");

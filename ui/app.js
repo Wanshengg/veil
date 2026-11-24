@@ -520,6 +520,9 @@
           <button class="btn filled" data-action="newserver">Создать новый сервер</button>
         </div>
         ${list.length ? `<p class="msg">${ru ? `Каскад через РУ: ${ru}. ` : ""}${pub ? "Раздатчик списка отмечен ★." : "Раздатчик не выбран — ключи подписки выдавать некуда."}</p>` : ""}
+        ${snap.signKey
+          ? `<p class="msg ${snap.signKeyMatches ? "" : "err"}">Ключ подписи: ${esc((snap.signKey || "").slice(0, 12))}…${snap.signKeyMatches ? "" : " — не совпадает со встроенным: ключи, выданные раньше, могут не проверяться."}</p>`
+          : `<p class="msg err">Ключа подписи нет — выдача и каскад работать не будут.</p>`}
       </div>
 
       <div class="group">
@@ -632,6 +635,7 @@
       (snap.poolServers || []).map((h) => h.host + (h.publisher ? "*" : "") + (h.role || "")).join(","),
       snap.poolKeyMsg || "", snap.poolKey || "", S.newRu ? 1 : 0, S.newPub ? 1 : 0,
       (snap.poolNames || []).join(","), snap.poolNamesBusy ? 1 : 0, S.revokeName || "",
+      snap.signKey || "", snap.signKeyMatches ? 1 : 0,
       S.newMode || "", snap.cascadeBusy ? 1 : 0, snap.cascadeStep || "", snap.cascadeResult || ""
     ].join("|");
 
