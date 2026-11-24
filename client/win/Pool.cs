@@ -406,20 +406,28 @@ namespace Veil
         {
             usedUrl = "";
             string lastErr = "";
-            foreach (string raw in urls)
+            for (int attempt = 1; attempt <= 3; attempt++)
             {
-                string url = (raw ?? "").Trim();
-                if (url.Length == 0) continue;
-                try
+                foreach (string raw in urls)
                 {
-                    byte[] blob = Download(url, pin);
-                    string pubText = string.IsNullOrEmpty(pk) ? PublicKeyB64 : pk;
-                    string json = PoolCodec.Unpack(blob, PoolCodec.KeyFromBase64(pubText), psk);
-                    PoolDoc doc = PoolDoc.Parse(json);
-                    usedUrl = url;
-                    return doc;
+                    string url = (raw ?? "").Trim();
+                    if (url.Length == 0) continue;
+                    try
+                    {
+                        byte[] blob = Download(url, pin);
+                        string pubText = string.IsNullOrEmpty(pk) ? PublicKeyB64 : pk;
+                        string json = PoolCodec.Unpack(blob, PoolCodec.KeyFromBase64(pubText), psk);
+                        PoolDoc doc = PoolDoc.Parse(json);
+                        usedUrl = url;
+                        return doc;
+                    }
+                    catch (Exception ex) { lastErr = ex.Message; }
                 }
-                catch (Exception ex) { lastErr = ex.Message; }
+                if (attempt < 3)
+                {
+                    Program.Log("pool: попытка " + attempt + " не прошла (" + lastErr + "), повторяю");
+                    System.Threading.Thread.Sleep(2500);
+                }
             }
             throw new InvalidDataException(lastErr.Length > 0 ? lastErr : "пул: нет адресов");
         }
