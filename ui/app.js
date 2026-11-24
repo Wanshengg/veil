@@ -166,7 +166,7 @@
       const c = active ? country(active) : null;
       return active ? `Выбран: ${c ? c.name : active.country}` : "Профилей нет";
     }
-    if (st === "connecting") return "Рукопожатие";
+    if (st === "connecting") return snap.note || "Рукопожатие";
     if (st === "reconnecting") return "Повторное рукопожатие";
     return "";
   };

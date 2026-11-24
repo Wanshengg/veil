@@ -821,6 +821,7 @@ namespace Veil
 
     class Core
     {
+        public string Note = "";   // что показать вместо «рукопожатие»""".replace('"""','')
         public readonly List<Profile> Profiles = Store.Load();
         public string State = "disconnected";
         public int Selected = 0;
@@ -858,14 +859,31 @@ namespace Veil
             {
                 ApplyRuExit(p);
                 Engine.WriteIni(p);
-                Proc = Engine.Start();
-                if (!Engine.WaitListen(7000) || Proc.HasExited)
+                // Волны блокировок: одна неудачная попытка не значит «нет связи».
+                // Пробуем до 4 раз с паузой, каждый раз заново перебирая порты.
+                bool ok = false;
+                for (int attempt = 1; attempt <= 4; attempt++)
                 {
-                    Program.Log("connect: client died, exit=" + (Proc.HasExited ? Proc.ExitCode.ToString() : "?"));
+                    Proc = Engine.Start();
+                    if (Engine.WaitListen(9000) && !Proc.HasExited) { ok = true; break; }
+                    Program.Log("connect: попытка " + attempt + " не прошла ("
+                        + (Proc.HasExited ? "клиент вышел, код " + Proc.ExitCode : "нет туннеля") + ")");
+                    Kill();
+                    if (attempt < 4)
+                    {
+                        Note = "Пробую ещё раз (" + attempt + " из 3)";
+                        Thread.Sleep(4000);
+                    }
+                }
+                if (!ok)
+                {
+                    Note = "";
+                    Program.Log("connect: все попытки не прошли");
                     State = "error";
                     Kill();
                     return;
                 }
+                Note = "";
                 SysProxy.Enable();
                 State = "connected";
                 UptimeSec = 0;
@@ -2086,6 +2104,7 @@ namespace Veil
               .Append(",\"tun\":").Append(Settings.Tun ? "true" : "false")
               .Append(",\"dns\":\"").Append(Esc(Settings.Dns)).Append("\"")
               .Append(",\"theme\":\"").Append(Esc(Settings.Theme)).Append("\"}");
+            sb.Append(",\"note\":\"").Append(Esc(core.Note)).Append("\"");
             sb.Append(",\"series\":[");
             for (int i = 0; i < core.PingSeries.Count; i++)
             {

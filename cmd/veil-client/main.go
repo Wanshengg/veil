@@ -45,6 +45,7 @@ type cfg struct {
 	directIP    net.IP
 	ru          *cfg     // выход для российских адресов (отдельный туннель)
 	candidates  []string // host:port, перебираем при блокировке порта
+	hintFile    string   // где запоминается рабочий порт
 	portIdx     int32    // индекс последнего рабочего порта (atomic) // адрес физического интерфейса для «прямых» соединений
 
 	mu   sync.Mutex
@@ -125,6 +126,7 @@ func main() {
 	ruExitPsk := flag.String("ru-exit-psk", "", "PSK for the RU exit (default: same as -psk)")
 	ruExitPorts := flag.String("ru-exit-ports", "", "ports to try on the RU exit (default: from -ports)")
 	cfgPath := flag.String("config", "", "optional key=value config file (flags win)")
+	portHint := flag.String("port-hint", "", "файл, где запоминается рабочий порт сервера")
 	tun := flag.Bool("tun", false, "route ALL system traffic through the tunnel (needs admin, wintun.dll)")
 	tunMTU := flag.Int("tun-mtu", 1400, "MTU of the TUN adapter (lower if the tunnel stalls)")
 	serverIP := flag.String("server-ip", "", "pin server IP, skip DNS (needed if another VPN hijacks DNS)")
@@ -199,6 +201,11 @@ func main() {
 	c.candidates = buildCandidates(c.server, *portList)
 	if len(c.candidates) > 1 {
 		log.Printf("veil-client: порты для перебора: %v", c.candidates)
+	}
+	c.hintFile = *portHint
+	if idx := portHintIndex(c, *portHint); idx > 0 {
+		atomic.StoreInt32(&c.portIdx, int32(idx))
+		log.Printf("veil-client: прошлый раз работало через %s — начинаю с него", c.candidates[idx])
 	}
 	log.Printf("veil-client: SOCKS5/4 on %s -> %s (sni=%s fp=%s direct=%v, ru-prefixes=%d)",
 		*socksAddr, *server, sniName, *fp, *direct, ruN)
@@ -332,6 +339,31 @@ func buildCandidates(server, ports string) []string {
 }
 
 // dialAny пробует кандидатов по кругу, начиная с последнего рабочего порта.
+// portHintIndex — индекс кандидата из файла-подсказки (где порт работал в прошлый раз).
+func portHintIndex(c *cfg, path string) int {
+	if path == "" {
+		return 0
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return 0
+	}
+	want := strings.TrimSpace(string(b))
+	for i, cand := range c.candidates {
+		if cand == want {
+			return i
+		}
+	}
+	return 0
+}
+
+func savePortHint(path, addr string) {
+	if path == "" {
+		return
+	}
+	_ = os.WriteFile(path, []byte(addr+"\n"), 0o600)
+}
+
 func dialAny(c *cfg, fp string, maxVer uint16) (*utls.UConn, error) {
 	if len(c.candidates) == 0 {
 		return dialTunnel(c, c.server, fp, maxVer)
@@ -347,6 +379,7 @@ func dialAny(c *cfg, fp string, maxVer uint16) (*utls.UConn, error) {
 			}
 			atomic.StoreInt32(&c.portIdx, int32(idx))
 			c.server = c.candidates[idx]
+			savePortHint(c.hintFile, c.server)
 			return uc, nil
 		}
 		err = derr

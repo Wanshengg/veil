@@ -417,7 +417,8 @@ namespace Veil
         public static Process StartClient()
         {
             ExtractClient();
-            ProcessStartInfo psi = new ProcessStartInfo(ClientPath, "-config \"" + IniPath + "\"");
+            string hint = Path.Combine(Dir, "port_hint.txt");
+            ProcessStartInfo psi = new ProcessStartInfo(ClientPath, "-config \"" + IniPath + "\" -port-hint \"" + hint + "\"");
             psi.UseShellExecute = false;
             psi.CreateNoWindow = true;
             psi.RedirectStandardError = true;

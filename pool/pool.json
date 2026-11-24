@@ -1,7 +1,7 @@
 {
   "v": 2,
   "pool": "chis",
-  "issued": "2026-11-24T00:45:00Z",
+  "issued": "2026-11-24T22:45:21Z",
   "ttl": 21600,
   "servers": [
     {
@@ -40,6 +40,30 @@
       "cc": "FI",
       "country": "Финляндия",
       "city": "Хельсинки",
+      "up": true
+    },
+    {
+      "id": "fi2",
+      "host": "pool.example.com",
+      "ports": [
+        10443
+      ],
+      "sni": "fi.example.com",
+      "cc": "FI",
+      "country": "Финляндия · резерв",
+      "city": "через второй РУ",
+      "up": true
+    },
+    {
+      "id": "se2",
+      "host": "pool.example.com",
+      "ports": [
+        10444
+      ],
+      "sni": "se.example.com",
+      "cc": "SE",
+      "country": "Швеция · резерв",
+      "city": "через второй РУ",
       "up": true
     }
   ]
