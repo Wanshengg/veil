@@ -23,6 +23,7 @@ namespace Veil
         public string Secret = "";     // пароль или путь к ключу
         public bool ViaTunnel;         // подключаться через SOCKS veil (127.0.0.1:1080)
         public bool IsPublisher;       // на этом хосте лежит каталог с блобами
+        public string Role = "";       // "ru" — РУ-сервер, через него каскад; "" — зарубежный
 
         public SshTarget ToTarget(string socks)
         {
@@ -41,7 +42,7 @@ namespace Veil
         public string Line()
         {
             return Label + "|" + Host + "|" + Port + "|" + User + "|" + Secret + "|" +
-                   (ViaTunnel ? "1" : "0") + "|" + (IsPublisher ? "1" : "0");
+                   (ViaTunnel ? "1" : "0") + "|" + (IsPublisher ? "1" : "0") + "|" + Role;
         }
 
         public static PoolHost Parse(string line)
@@ -52,7 +53,8 @@ namespace Veil
             {
                 Label = f[0], Host = f[1], Port = int.Parse(f[2]), User = f[3], Secret = f[4],
                 ViaTunnel = f.Length > 5 && f[5] == "1",
-                IsPublisher = f.Length > 6 && f[6] == "1"
+                IsPublisher = f.Length > 6 && f[6] == "1",
+                Role = f.Length > 7 ? f[7] : ""
             };
             return h;
         }

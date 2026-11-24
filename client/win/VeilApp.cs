@@ -1367,7 +1367,8 @@ namespace Veil
                     Port = IntOr(Json(raw, "port"), 22),
                     User = string.IsNullOrEmpty(Json(raw, "user")) ? "root" : Json(raw, "user"),
                     Secret = Json(raw, "secret") ?? "",
-                    IsPublisher = (Json(raw, "publisher") ?? "") == "true"
+                    IsPublisher = (Json(raw, "publisher") ?? "") == "true",
+                    Role = Json(raw, "role") ?? ""
                 };
                 if (h.Host.Length == 0) { poolKeyMsg = "Укажи адрес сервера"; PushSafe(); return; }
                 if (h.IsPublisher)
@@ -1904,7 +1905,8 @@ namespace Veil
                 if (i > 0) sb.Append(',');
                 sb.Append("{\"label\":\"").Append(Esc(poolHosts[i].Label.Length > 0 ? poolHosts[i].Label : poolHosts[i].Host))
                   .Append("\",\"host\":\"").Append(Esc(poolHosts[i].Host))
-                  .Append("\",\"publisher\":").Append(poolHosts[i].IsPublisher ? "true" : "false").Append("}");
+                  .Append("\",\"publisher\":").Append(poolHosts[i].IsPublisher ? "true" : "false")
+                  .Append(",\"role\":\"").Append(Esc(poolHosts[i].Role)).Append("\"}");
             }
             sb.Append("],\"poolKeyMsg\":\"").Append(Esc(poolKeyMsg))
               .Append("\",\"poolKey\":\"").Append(Esc(poolIssuedKey))

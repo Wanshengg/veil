@@ -65,7 +65,7 @@
     refreshSubs: () => post({ cmd: "sub-refresh" }),
     profileDel: (id) => post({ cmd: "profile-del", id }),
     poolAdd: (cfg) => post({ cmd: "pool-add", label: cfg.label, host: cfg.host, port: String(cfg.port),
-                              user: cfg.user, secret: cfg.secret, publisher: cfg.publisher }),
+                              user: cfg.user, secret: cfg.secret, publisher: cfg.publisher, role: cfg.role || "" }),
     poolDel: (host) => post({ cmd: "pool-del", host }),
     poolIssue: (name) => post({ cmd: "pool-issue", name }),
     clipWrite: (text) => post({ cmd: "clip-write", text }),

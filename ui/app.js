@@ -334,7 +334,8 @@
       <div class="group">
         <div class="caps">Профиль</div>
         <div class="row clickable" data-action="keys"><span class="t">Ключ из буфера</span><span class="v">›</span></div>
-        <div class="row clickable" data-action="server"><span class="t">Сервер по SSH</span><span class="v">›</span></div>
+        <div class="row clickable" data-action="myservers"><span class="t">Мои серверы</span><span class="v">${(snap.poolServers || []).length} ›</span></div>
+        <div class="row clickable" data-action="newserver"><span class="t">Создать новый сервер</span><span class="v">›</span></div>
         <div class="row clickable" data-action="cities"><span class="t">Серверы</span><span class="v">${snap.srvPoolCount || 0} подписка · ${snap.srvOwnCount || 0} ключи ›</span></div>
         <div class="row clickable" data-action="sub-refresh"><span class="t">Обновить подписку</span><span class="v">↻</span></div>
       </div>
@@ -390,7 +391,7 @@
       <button class="back" data-action="settings">‹ Назад</button>
 
       <div class="group">
-        <div class="caps">Сервер по SSH</div>
+        <div class="caps">Новый сервер</div>
         ${field("srvHost", "Сервер", "203.0.113.10 или домен", "text", snap.srvHost)}
         ${field("srvPort", "Порт", "22", "number", "22")}
         ${field("srvUser", "Пользователь", "root", "text", snap.srvUser)}
@@ -412,42 +413,63 @@
       </div>
 
       <div class="group">
-        <div class="caps">Серверы подписки${(snap.poolServers || []).some((h) => h.publisher) ? " · ★ раздатчик" : ""}</div>
-        ${(snap.poolServers || []).map((h) => `
-          <div class="row clickable" data-action="pool-del" data-host="${esc(h.host)}">
-            <span class="t">${esc(h.label)}${h.publisher ? " ★" : ""}</span>
-            <span class="v">×</span>
-          </div>`).join("") || `<p class="msg">Пока пусто: добавь серверы, на которых выдавать ключи.</p>`}
+        <div class="caps">Роль сервера</div>
+        <div class="row"><span class="t">РУ-сервер: через него каскад</span>${switchBtn(!!S.newRu, "new-ru", "РУ-сервер")}</div>
+        <p class="msg">РУ-сервер принимает подключения из России и выводит в РФ-интернет.
+          Остальные серверы считаются зарубежными и ходят через него каскадом.</p>
+        <div class="row"><span class="t">Раздатчик списка ключей</span>${switchBtn(!!S.newPub, "new-pub", "Раздатчик")}</div>
+        <p class="msg">Раздатчик хранит зашифрованный список серверов и отдаёт его по ссылке.
+          Туннель через него не идёт.</p>
         <div class="actions">
-          <button class="btn outline" data-action="pool-add" ${busy ? "disabled" : ""}>Добавить сервер из формы выше</button>
+          <button class="btn filled" data-action="pool-add" ${busy ? "disabled" : ""}>Добавить в мои серверы</button>
         </div>
-        <div class="row"><span class="t">Этот сервер — раздатчик списка</span>${switchBtn(!!S.poolPublisher, "pool-publisher", "Раздатчик списка")}</div>
+        <p class="msg">Установка на сервер — кнопкой «Подключиться» выше. Добавление только запоминает доступ и роль.</p>
+      </div>
+    </section>`;
+  };
+
+  /* ── мои серверы: что уже сделано + выдача ключей ─────────────────────── */
+
+  const roleText = (h) => h.publisher ? "раздатчик списка" : (h.role === "ru" ? "РУ · каскад" : "зарубежный");
+
+  const viewMyServers = (snap) => {
+    const busy = !!snap.srvBusy;
+    const list = snap.poolServers || [];
+    const ru = list.filter((h) => h.role === "ru").length;
+    const pub = list.filter((h) => h.publisher).length;
+    return `
+    <section class="screen compact">
+      <button class="back" data-action="settings">‹ Назад</button>
+
+      <div class="group">
+        <div class="caps">Мои серверы · ${list.length}</div>
+        ${list.length
+          ? list.map((h) => `
+            <div class="row">
+              <span class="t">${esc(h.label)}<br><span class="sub">${roleText(h)}</span></span>
+              <button class="x" data-action="pool-del" data-host="${esc(h.host)}" aria-label="Удалить">×</button>
+            </div>`).join("")
+          : `<p class="msg">Пока нет ни одного сервера. Создай первый — это одна кнопка.</p>`}
+        <div class="actions">
+          <button class="btn filled" data-action="newserver">Создать новый сервер</button>
+        </div>
+        ${list.length ? `<p class="msg">${ru ? `Каскад через РУ: ${ru}. ` : ""}${pub ? "Раздатчик списка отмечен ★." : "Раздатчик не выбран — ключи подписки выдавать некуда."}</p>` : ""}
+      </div>
+
+      <div class="group">
+        <div class="caps">Выдать ключ подписки</div>
         <label class="field">
           <span class="caps">Имя человека</span>
           <input id="poolWho" type="text" placeholder="мама, друг, тест" ${busy ? "disabled" : ""}>
         </label>
         <div class="actions">
-          <button class="btn filled" data-action="pool-issue" ${busy ? "disabled" : ""}>Выдать ключ подписки</button>
+          <button class="btn filled" data-action="pool-issue" ${busy || !list.length ? "disabled" : ""}>Выдать ключ подписки</button>
         </div>
+        <p class="msg">Ключ добавится на все серверы списка и вернётся строкой — её и отправь человеку.</p>
         ${snap.poolKeyMsg ? `<p class="msg">${esc(snap.poolKeyMsg)}</p>` : ""}
         ${snap.poolKey ? `
           <div class="keybox">${esc(snap.poolKey)}</div>
           <div class="actions"><button class="btn outline" data-action="pool-copy">Скопировать ключ</button></div>` : ""}
-      </div>
-
-      <div class="group">
-        <div class="caps">Ключи</div>
-        ${keys.length
-          ? keys.map((k) => `<div class="row"><span class="t">${esc(k)}</span><button class="btn outline" style="height:36px;width:auto;padding:0 12px;font-size:13px" data-action="srv-revoke" data-name="${esc(k)}">Отозвать</button></div>`).join("")
-          : `<p class="msg">${snap.srvInstalled ? "Пока не читал список" : "Ключи появятся после установки"}</p>`}
-        <label class="field">
-          <span class="caps">Новый ключ</span>
-          <input id="srvNewKey" type="text" placeholder="имя: мама, друг" ${busy ? "disabled" : ""}>
-        </label>
-        <div class="actions">
-          <button class="btn outline" data-action="srv-issue" ${busy ? "disabled" : ""}>Выдать ключ</button>
-        </div>
-        <p class="msg">Ключ даёт только туннель: у получателя нет ни SSH, ни оболочки, ни sudo.</p>
       </div>
     </section>`;
   };
@@ -504,6 +526,7 @@
     else if (S.screen === "settings") html = viewSettings(snap);
     else if (S.screen === "keys") html = viewKeys(snap);
     else if (S.screen === "server") html = viewServer(snap);
+    else if (S.screen === "myservers") html = viewMyServers(snap);
     else html = viewMain(snap, servers);
 
     const overlay = $("#overlay");
@@ -520,8 +543,8 @@
       snap.error || "", snap.keyMsg || "", snap.srvStatus || "", snap.srvBusy ? 1 : 0,
       snap.srvInstalled ? 1 : 0, snap.srvSaved ? 1 : 0,
       (snap.srvKeys || []).join(","), servers.length,
-      (snap.poolServers || []).map((h) => h.host + (h.publisher ? "*" : "")).join(","),
-      snap.poolKeyMsg || "", snap.poolKey || "", S.poolPublisher ? 1 : 0
+      (snap.poolServers || []).map((h) => h.host + (h.publisher ? "*" : "") + (h.role || "")).join(","),
+      snap.poolKeyMsg || "", snap.poolKey || "", S.newRu ? 1 : 0, S.newPub ? 1 : 0
     ].join("|");
 
     if (key !== S.lastKey) {
@@ -642,14 +665,20 @@
     if (a === "srv-revoke") return adapter.srvRevoke(el.dataset.name || "");
     if (a === "srv-forget") return adapter.srvForget();
     if (a === "pool-publisher") { S.poolPublisher = !S.poolPublisher; S.lastKey = ""; return render(); }
+    if (a === "myservers") { S.screen = "myservers"; return render(); }
+    if (a === "newserver") { S.screen = "server"; return render(); }
+    if (a === "new-ru") { S.newRu = !S.newRu; S.lastKey = ""; return render(); }
+    if (a === "new-pub") { S.newPub = !S.newPub; S.lastKey = ""; return render(); }
     if (a === "pool-add") {
       const get = (id) => { const e = document.getElementById(id); return e ? e.value.trim() : ""; };
       if (!get("srvHost")) return;
       adapter.poolAdd({
         label: get("srvHost"), host: get("srvHost"), port: get("srvPort") || "22",
         user: get("srvUser") || "root", secret: get("srvSecret"),
-        publisher: S.poolPublisher ? "true" : "false"
+        publisher: S.newPub ? "true" : "false",
+        role: S.newRu ? "ru" : ""
       });
+      S.screen = "myservers";
       return;
     }
     if (a === "pool-del") return adapter.poolDel(el.dataset.host || "");
