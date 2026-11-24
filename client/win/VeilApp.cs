@@ -1076,11 +1076,12 @@ namespace Veil
             }
             Text = "veil";
             ClientSize = new Size(420, 860);
-            MinimumSize = new Size(430, 700);
+            MinimumSize = new Size(380, 560);
             StartPosition = FormStartPosition.CenterScreen;
             BackColor = Color.FromArgb(10, 12, 17);
-            FormBorderStyle = FormBorderStyle.FixedSingle;
-            MaximizeBox = false;
+            FormBorderStyle = FormBorderStyle.Sizable;
+            MaximizeBox = true;
+            SizeGripStyle = SizeGripStyle.Show;
             Settings.Load();
             Program.ForceLightTitleBar(Handle, Settings.ResolveDark() ? 1 : 0);
             try
@@ -1093,6 +1094,26 @@ namespace Veil
             web = new WebView2();
             web.Dock = DockStyle.Fill;
             Controls.Add(web);
+
+            // трей: окно уходит туда по кнопке «свернуть», двойной клик возвращает
+            try
+            {
+                tray = new NotifyIcon();
+                using (Stream ico = System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream("veil.ico"))
+                    if (ico != null) tray.Icon = new System.Drawing.Icon(ico);
+                if (tray.Icon == null) tray.Icon = SystemIcons.Application;
+                tray.Text = "veil";
+                var menu = new ContextMenuStrip();
+                menu.Items.Add("Показать", null, delegate { ShowFromTray(); });
+                menu.Items.Add(new ToolStripSeparator());
+                menu.Items.Add("Выход", null, delegate { tray.Visible = false; Application.Exit(); });
+                tray.ContextMenuStrip = menu;
+                tray.DoubleClick += delegate { ShowFromTray(); };
+                tray.Visible = true;
+                Resize += delegate { if (WindowState == FormWindowState.Minimized) HideToTray(); };
+                FormClosing += delegate { if (tray != null) tray.Visible = false; };
+            }
+            catch (Exception ex) { Program.Log("tray: " + ex.Message); }
 
             Load += async delegate
             {
@@ -1921,6 +1942,30 @@ namespace Veil
         bool srvBusy = false, srvInstalled = false;
         List<PoolHost> poolHosts = PoolRegistry.Load();
         string poolKeyMsg = "", poolIssuedKey = "", poolBase = "";
+        NotifyIcon tray;
+        bool trayHintShown = false;
+
+        void HideToTray()
+        {
+            Hide();
+            if (trayHintShown) return;
+            trayHintShown = true;
+            try
+            {
+                if (tray != null && tray.Visible)
+                    tray.ShowBalloonTip(2500, "veil", "Свёрнуто в трей. Подключение продолжает работать.", ToolTipIcon.Info);
+            }
+            catch { }
+        }
+
+        void ShowFromTray()
+        {
+            Show();
+            WindowState = FormWindowState.Normal;
+            Activate();
+            BringToFront();
+        }
+
         bool cascadeBusy = false;
         string cascadeStep = "", cascadeResult = "";
         List<string> poolNames = new List<string>();   // ключи, которые реально лежат на серверах
