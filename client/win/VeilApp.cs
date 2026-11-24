@@ -1237,6 +1237,22 @@ namespace Veil
                     Program.Log("step: navigate done");
             StartSubRefresh();                     // подписки: сразу и потом раз в 6 часов
             zapList = Zapret.Strategies();
+            string zapElevate = Program.ArgOf(Environment.GetCommandLineArgs(), "--zap-elevate=");
+            if (zapElevate.Length > 0)
+            {
+                ThreadPool.QueueUserWorkItem(delegate {
+                    try
+                    {
+                        Zapret.Start(zapElevate);
+                        Zapret.StateSet("strategy", zapElevate);
+                        autoZap = true;
+                        zapStatus = "Запрет включён · " + zapElevate;
+                        Program.Log("zapret elevate-start: " + zapElevate);
+                    }
+                    catch (Exception ex) { zapStatus = "Запрет не запустился: " + ex.Message; Program.Log("zapret elevate-start: " + ex); }
+                    PushSafe();
+                });
+            }
             if (Zapret.Autoconnect && Zapret.Installed && !string.IsNullOrEmpty(Zapret.SelectedStrategy))
             {
                 ThreadPool.QueueUserWorkItem(delegate {
@@ -1472,6 +1488,12 @@ namespace Veil
                             if (string.IsNullOrEmpty(id)) id = Zapret.SelectedStrategy;
                             if (string.IsNullOrEmpty(id) && zapList.Count > 0) id = zapList[0].Id;
                             if (string.IsNullOrEmpty(id)) throw new InvalidOperationException("нет стратегий — сначала установи");
+                            if (!IsAdmin() && !Program.NoElevate)
+                            {
+                                zapStatus = "Нужны права администратора — перезапускаю приложение";
+                                PushSafe();
+                                if (TryElevateForZapret(id)) return;
+                            }
                             zapStatus = "Запускаю " + id + "…"; PushSafe();
                             Zapret.Start(id);
                             Zapret.StateSet("strategy", id);
@@ -1510,7 +1532,11 @@ namespace Veil
                             zapStatus = zapProgress;
                             PushSafe();
                         });
-                        foreach (Zapret.Result r in res) zapResults[r.Id] = r;
+                        foreach (Zapret.Result r in res)
+                        {
+                            zapResults[r.Id] = r;
+                            Program.Log("zapret check: " + r.Id + " → " + (r.Ok ? "ok " + r.PingMs + " мс" : "fail " + r.Error));
+                        }
                         Zapret.Result best = Zapret.Best(res);
                         int okCount = res.FindAll(x => x.Ok).Count;
                         zapStatus = "Работают " + okCount + " из " + res.Count + (best != null ? " · лучшая: " + best.Name : "");
@@ -1910,6 +1936,27 @@ namespace Veil
         // Push вызывается и из фоновых потоков — WebView2 требует UI-поток
         // TUN требует прав администратора: перезапускаемся с повышением сами,
         // вместо того чтобы просить пользователя «запусти от админа».
+        // Запрет работает через winws.exe, а ему нужны права администратора.
+        bool TryElevateForZapret(string strategy)
+        {
+            if (IsAdmin() || Program.NoElevate) return false;
+            try
+            {
+                string self = System.Reflection.Assembly.GetExecutingAssembly().Location;
+                Process.Start(new ProcessStartInfo(self, "--zap-elevate=\"" + strategy + "\"") { UseShellExecute = true, Verb = "runas" });
+                Program.Log("elevate: перезапуск с правами администратора (запрет " + strategy + ")");
+                Application.Exit();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Program.Log("elevate zapret: " + ex.Message);
+                zapStatus = "Без прав администратора запрет не запустится";
+                PushSafe();
+                return false;
+            }
+        }
+
         bool TryElevateForTun()
         {
             if (!Settings.Tun || IsAdmin() || Program.NoElevate) return false;

@@ -420,25 +420,38 @@ namespace Veil
             public string Desc { get { return Ok ? PingMs + " мс" : (Error.Length > 0 ? Error : "не прошла"); } }
         }
 
+        // Проверка через curl.exe: он делает IPv4 и не висит на IPv6, в отличие от .NET HttpClient.
         static bool Probe(string url, int expected, int timeoutMs, out int ms, out string why)
         {
             ms = 0; why = "";
             try
             {
-                using (var h = new HttpClient { Timeout = TimeSpan.FromMilliseconds(timeoutMs) })
+                string curl = Path.Combine(Environment.SystemDirectory, "curl.exe");
+                if (!File.Exists(curl)) curl = "curl.exe";
+                var psi = new ProcessStartInfo(curl,
+                    "--ipv4 -s -o NUL --max-time " + Math.Max(1, timeoutMs / 1000) +
+                    " -w \"%{http_code} %{time_total}\" \"" + url + "\"")
                 {
-                    var sw = Stopwatch.StartNew();
-                    var req = new HttpRequestMessage(HttpMethod.Get, url);
-                    var resp = h.SendAsync(req).GetAwaiter().GetResult();
-                    sw.Stop();
-                    ms = (int)sw.ElapsedMilliseconds;
-                    int code = (int)resp.StatusCode;
+                    UseShellExecute = false, CreateNoWindow = true,
+                    RedirectStandardOutput = true, RedirectStandardError = true
+                };
+                using (Process p = Process.Start(psi))
+                {
+                    string outp = p.StandardOutput.ReadToEnd().Trim();
+                    p.WaitForExit(timeoutMs + 2000);
+                    string[] parts = outp.Split(' ');
+                    int code = 0;
+                    int.TryParse(parts.Length > 0 ? parts[0] : "0", out code);
+                    double secs = 0;
+                    if (parts.Length > 1) double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out secs);
+                    ms = (int)Math.Round(secs * 1000);
+                    if (code == 0) { why = "нет ответа"; return false; }
                     if (expected > 0 && code != expected) { why = "HTTP " + code; return false; }
                     if (expected == 0 && (code < 200 || code >= 400)) { why = "HTTP " + code; return false; }
                     return true;
                 }
             }
-            catch (Exception ex) { why = ex is TaskCanceledException ? "таймаут" : ex.Message; return false; }
+            catch (Exception ex) { why = ex.Message; return false; }
         }
 
         public static Result CheckOne(string id, string name)
