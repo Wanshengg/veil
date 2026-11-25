@@ -78,6 +78,7 @@
     zapSelect: (id) => post({ cmd: "zap-select", id }),
     zapAutoconnect: () => post({ cmd: "zap-autoconnect" }),
     zapAutoStrategy: () => post({ cmd: "zap-autostrategy" }),
+    openUrl: (url) => post({ cmd: "open-url", url }),
     cascadeBuild: (cfg) => post({ cmd: "cascade-build",
       ruHost: cfg.ruHost, ruPort: cfg.ruPort, ruUser: cfg.ruUser, ruSecret: cfg.ruSecret, ruDomain: cfg.ruDomain,
       fHost: cfg.fHost, fPort: cfg.fPort, fUser: cfg.fUser, fSecret: cfg.fSecret,

@@ -23,6 +23,8 @@ namespace Veil
 {
     static class Program
     {
+        public const string AppVersion = "0.6.6";   // сверяется с манифестом обновлений
+        public const string ManifestUrl = "https://pool.example.com/static/veil.json";
         public static string RuntimeDir
         {
             get
@@ -1242,6 +1244,29 @@ namespace Veil
             ThreadPool.QueueUserWorkItem(delegate {
                 try
                 {
+                    using (var hc = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(12) })
+                    {
+                        string json = hc.GetStringAsync(Program.ManifestUrl).GetAwaiter().GetResult();
+                        System.Text.RegularExpressions.Match mv = System.Text.RegularExpressions.Regex.Match(json, "\"version\"\\s*:\\s*\"([^\"]+)\"");
+                        System.Text.RegularExpressions.Match mu = System.Text.RegularExpressions.Regex.Match(json, "\"url\"\\s*:\\s*\"([^\"]+)\"");
+                        if (mv.Success) appLatest = mv.Groups[1].Value;
+                        if (mu.Success) appUrl = mu.Groups[1].Value;
+                        if (appLatest.Length > 0 && Zapret.IsNewer(appLatest, Program.AppVersion))
+                        {
+                            toastOk = true;
+                            toastText = "Доступна версия veil " + appLatest;
+                            toastSeq++;
+                            Program.Log("app update: доступна " + appLatest + " (стоит " + Program.AppVersion + ")");
+                        }
+                        PushSafe();
+                    }
+                }
+                catch (Exception ex) { Program.Log("app update check: " + ex.Message); }
+            });
+
+            ThreadPool.QueueUserWorkItem(delegate {
+                try
+                {
                     if (!Zapret.Installed) return;
                     Zapret.Release rel = Zapret.Latest();
                     zapLatest = rel.Version;
@@ -1513,7 +1538,7 @@ namespace Veil
                         zapLatest = rel.Version;
                         if (Zapret.Installed && !force && !Zapret.IsNewer(rel.Version, Zapret.Version))
                         {
-                            zapStatus = "Уже последняя версия " + Zapret.Version + " — набор не трогаю";
+                            zapStatus = "Уже последняя версия " + Zapret.Version;
                             zapBusy = false;
                             PushSafe();
                             return;
@@ -1590,6 +1615,12 @@ namespace Veil
                 Zapret.StateSet("strategy", id);
                 zapStatus = "Выбрана " + id;
                 PushSafe();
+            }
+            else if (cmd == "open-url")
+            {
+                string u = Json(raw, "url") ?? "";
+                try { if (u.StartsWith("http")) Process.Start(new ProcessStartInfo(u) { UseShellExecute = true }); }
+                catch (Exception ex) { Program.Log("open-url: " + ex.Message); }
             }
             else if (cmd == "zap-autoconnect")
             {
@@ -2212,6 +2243,7 @@ namespace Veil
         bool autoZap = false;
         int zapFails = 0;
         string zapLatest = "";
+        string appLatest = "", appUrl = "";
         System.Windows.Forms.Timer zapWatch;
         string zapStatus = "", zapProgress = "";
         List<Zapret.Strategy> zapList = new List<Zapret.Strategy>();
@@ -2363,6 +2395,11 @@ namespace Veil
               .Append(",\"dns\":\"").Append(Esc(Settings.Dns)).Append("\"")
               .Append(",\"theme\":\"").Append(Esc(Settings.Theme)).Append("\"}");
             sb.Append(",\"note\":\"").Append(Esc(core.Note)).Append("\"");
+            sb.Append(",\"app\":{\"version\":\"").Append(Esc(Program.AppVersion)).Append("\"")
+              .Append(",\"latest\":\"").Append(Esc(appLatest)).Append("\"")
+              .Append(",\"url\":\"").Append(Esc(appUrl)).Append("\"")
+              .Append(",\"updateAvailable\":").Append(appLatest.Length > 0 && Zapret.IsNewer(appLatest, Program.AppVersion) ? "true" : "false")
+              .Append("}");
             sb.Append(",\"zap\":{");
             string bestId = null;
             {

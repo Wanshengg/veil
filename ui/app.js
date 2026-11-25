@@ -146,7 +146,7 @@
       srvInstall() {}, srvKeys() {}, srvIssue() {}, srvRevoke() {}, srvForget() {}, refreshSubs() {}, profileDel() {},
       poolAdd() {}, poolDel() {}, poolIssue() {}, clipWrite() {}, poolKeys() {}, poolRevoke() {}, poolIssueOne() {},
       cascadeBuild() {}, zapInstall() {}, zapToggle() {}, zapCheck() {}, zapSelect() {}, zapAutoconnect() {},
-      zapAutoStrategy() {}
+      zapAutoStrategy() {}, openUrl() {}
     };
   })();
 
@@ -353,6 +353,10 @@
 
       <div class="group">
         <div class="caps">Приложение</div>
+        <div class="row"><span class="t">Версия</span><span class="v">${esc((snap.app && snap.app.version) || "—")}</span></div>
+        ${snap.app && snap.app.updateAvailable
+          ? `<div class="row clickable" data-action="app-update"><span class="t">Доступна ${esc(snap.app.latest)}</span><span class="v">Скачать ›</span></div>`
+          : ""}
         <div class="row">
           <span class="t">Тема</span>
           <span class="choice" role="group" aria-label="Тема">
@@ -835,6 +839,7 @@
     if (a === "srv-forget") return adapter.srvForget();
     if (a === "pool-publisher") { S.poolPublisher = !S.poolPublisher; S.lastKey = ""; return render(); }
     if (a === "zapret") { S.screen = "zapret"; return render(); }
+    if (a === "app-update") return adapter.openUrl((S.snap && S.snap.app && S.snap.app.url) || "https://github.com/Wanshengg/veil/releases/latest");
     if (a === "zap-install") return adapter.zapInstall(false);
     if (a === "zap-reinstall") return adapter.zapInstall(true);
     if (a === "zap-toggle") return adapter.zapToggle("");
