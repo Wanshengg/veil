@@ -23,8 +23,28 @@ namespace Veil
 {
     static class Program
     {
-        public const string AppVersion = "0.6.9";   // сверяется с манифестом обновлений
-        public const string ManifestUrl = "https://pool.example.com/static/veil.json";
+        public const string AppVersion = "0.7.0";   // сверяется с манифестом обновлений
+        static string manifestCache = null;
+
+        // Адрес манифеста обновлений выводится из адреса подписки: в публичном
+        // репозитории живых хостов нет, а у каждого пользователя свой раздатчик.
+        public static string ManifestUrl
+        {
+            get
+            {
+                if (manifestCache != null) return manifestCache;
+                string sub = "";
+                try { Store.Load().ForEach(delegate(Profile p) { if (sub.Length == 0 && p.Sub.Length > 0) sub = p.Sub; }); } catch { }
+                if (sub.Length == 0) { manifestCache = "https://pool.example.com/static/veil.json"; return manifestCache; }
+                try
+                {
+                    var u = new Uri(sub);
+                    manifestCache = u.Scheme + "://" + u.Authority + "/static/veil.json";
+                }
+                catch { manifestCache = "https://pool.example.com/static/veil.json"; }
+                return manifestCache;
+            }
+        }
         public static string RuntimeDir
         {
             get
@@ -88,6 +108,27 @@ namespace Veil
                 string delArg = ArgOf(Environment.GetCommandLineArgs(), "--del=");
                 if (delArg.Length > 0) { RunProfileDelete(delArg); return; }
                 string subTest = ArgOf(Environment.GetCommandLineArgs(), "--sub-test=");
+                string patchTest = ArgOf(Environment.GetCommandLineArgs(), "--patch-test=");
+                if (patchTest.Length > 0)
+                {
+                    string[] pa = patchTest.Split('|');
+                    try
+                    {
+                        Engine.ExtractClient();
+                        string zstd = Path.Combine(Engine.Dir, "zstd.exe");
+                        var psi = new ProcessStartInfo(zstd,
+                            "-q -f -d --patch-from=\"" + pa[0] + "\" \"" + pa[1] + "\" -o \"" + pa[2] + "\"")
+                        { CreateNoWindow = true, UseShellExecute = false, RedirectStandardError = true };
+                        using (Process pz = Process.Start(psi))
+                        {
+                            string err = pz.StandardError.ReadToEnd();
+                            pz.WaitForExit();
+                            Program.Log("patch-test: rc=" + pz.ExitCode + " " + err.Trim());
+                        }
+                    }
+                    catch (Exception ex) { Program.Log("patch-test: " + ex.Message); }
+                    return;
+                }
                 if (subTest.Length > 0) { RunSubTest(subTest, false); return; }
                 string subAdd = ArgOf(Environment.GetCommandLineArgs(), "--sub-add=");
                 if (subAdd.Length > 0) { RunSubTest(subAdd, true); return; }
@@ -645,6 +686,7 @@ namespace Veil
             ExtractRes("veil-client.exe", ClientPath, true);
             // wintun нужен рядом с клиентом для TUN-режима
             ExtractRes("wintun.dll", Path.Combine(Dir, "wintun.dll"), false);
+            ExtractRes("zstd.exe", Path.Combine(Dir, "zstd.exe"), false);
         }
 
         static void ExtractRes(string suffix, string dst, bool required)
@@ -1299,6 +1341,10 @@ namespace Veil
                         System.Text.RegularExpressions.Match mu = System.Text.RegularExpressions.Regex.Match(json, "\"url\"\\s*:\\s*\"([^\"]+)\"");
                         System.Text.RegularExpressions.Match ms = System.Text.RegularExpressions.Regex.Match(json, "\"sha256\"\\s*:\\s*\"([a-fA-F0-9]{64})\"");
                         if (mv.Success) appLatest = mv.Groups[1].Value;
+                        // дельта-обновления: "patch_0.6.8": "<url>" — качаем только разницу
+                        System.Text.RegularExpressions.Match mp = System.Text.RegularExpressions.Regex.Match(json,
+                            "\"patch_" + System.Text.RegularExpressions.Regex.Escape(Program.AppVersion) + "\"\\s*:\\s*\"([^\"]+)\"");
+                        appPatch = mp.Success ? mp.Groups[1].Value : "";
                         if (mu.Success) appUrl = mu.Groups[1].Value;
                         if (ms.Success) appSha = ms.Groups[1].Value.ToLowerInvariant();
                         if (appLatest.Length > 0 && Zapret.IsNewer(appLatest, Program.AppVersion))
@@ -1683,17 +1729,46 @@ namespace Veil
                 {
                     url = "https://github.com/Wanshengg/veil/releases/latest/download/veil.exe";
                 }
-                Toast("Скачиваю обновление " + appLatest + "…", true);
+                Toast(appPatch.Length > 0 ? "Обновление " + appLatest + " — качаю дельту…" : "Скачиваю обновление " + appLatest + "…", true);
                 ThreadPool.QueueUserWorkItem(delegate {
                     try
                     {
                         string dir = Path.Combine(Engine.Dir, "update");
                         Directory.CreateDirectory(dir);
                         string fresh = Path.Combine(dir, "veil-new.exe");
+                        string self0 = System.Reflection.Assembly.GetExecutingAssembly().Location;
+                        string patchUrl = appPatch;
 
-                        using (var hc = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromMinutes(5) })
-                        using (var s = hc.GetStreamAsync(url).GetAwaiter().GetResult())
-                        using (var f = File.Create(fresh)) s.CopyTo(f);
+                        if (patchUrl.Length > 0)
+                        {
+                            // дельта: скачиваем несколько сотен килобайт вместо 27 МБ
+                            string pf = Path.Combine(dir, "patch.zst");
+                            using (var hc = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromMinutes(2) })
+                            using (var s = hc.GetStreamAsync(patchUrl).GetAwaiter().GetResult())
+                            using (var f = File.Create(pf)) s.CopyTo(f);
+
+                            string zstd = Path.Combine(Engine.Dir, "zstd.exe");
+                            if (!File.Exists(zstd)) { Engine.ExtractClient(); }
+                            if (!File.Exists(zstd)) throw new InvalidOperationException("нет zstd.exe для дельты");
+
+                            var psi = new ProcessStartInfo(zstd,
+                                "-q -f -d --patch-from=\"" + self0 + "\" \"" + pf + "\" -o \"" + fresh + "\"")
+                            { CreateNoWindow = true, UseShellExecute = false, RedirectStandardError = true };
+                            using (Process pz = Process.Start(psi))
+                            {
+                                string err = pz.StandardError.ReadToEnd();
+                                pz.WaitForExit();
+                                if (pz.ExitCode != 0 || !File.Exists(fresh))
+                                    throw new InvalidOperationException("дельта не применилась: " + err.Trim());
+                            }
+                            Program.Log("app update: дельта применена из " + Path.GetFileName(pf));
+                        }
+                        else
+                        {
+                            using (var hc = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromMinutes(5) })
+                            using (var s = hc.GetStreamAsync(url).GetAwaiter().GetResult())
+                            using (var f = File.Create(fresh)) s.CopyTo(f);
+                        }
 
                         string got;
                         using (var h2 = System.Security.Cryptography.SHA256.Create())
@@ -1709,6 +1784,7 @@ namespace Veil
                             "@echo off\r\n" +
                             ":wait\r\n" +
                             "tasklist /fi \"imagename eq veil.exe\" 2>nul | find /i \"veil.exe\" >nul && (timeout /t 1 /nobreak >nul & goto wait)\r\n" +
+                            "copy /y \"" + self + "\" \"" + self + ".bak\" >nul\r\n" +
                             "copy /y \"" + fresh + "\" \"" + self + "\" >nul\r\n" +
                             "start \"\" \"" + self + "\"\r\n" +
                             "del \"%~f0\"\r\n", new UTF8Encoding(false));
@@ -2355,7 +2431,7 @@ namespace Veil
         bool autoZap = false;
         int zapFails = 0;
         string zapLatest = "";
-        string appLatest = "", appUrl = "", appSha = "";
+        string appLatest = "", appUrl = "", appSha = "", appPatch = "";
         bool appUpdating = false;
         System.Windows.Forms.Timer zapWatch;
         string zapStatus = "", zapProgress = "";

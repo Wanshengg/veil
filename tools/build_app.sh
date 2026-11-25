@@ -25,6 +25,7 @@ WEB=client\\win\\webview2
   /r:$SSH\\System.Numerics.Vectors.dll \
   /resource:dist\\veil-client\\veil-client.exe,veil-client.exe \
   /resource:dist\\veil-client\\wintun.dll,wintun.dll \
+  /resource:third_party\\zstd.exe,zstd.exe \
   /resource:dist\\veil-client\\veil-server-linux,veil-server-linux \
   /resource:deploy\\bootstrap.sh,bootstrap.sh \
   /resource:$SSH\\Renci.SshNet.dll,Renci.SshNet.dll \
