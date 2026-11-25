@@ -659,6 +659,41 @@ namespace Veil
             catch (Exception ex) { Program.Log("zapret results save: " + ex.Message); }
         }
 
+        // Быстрая проверка текущей стратегии: один запрос, без полного прогона.
+        public static bool QuickOk()
+        {
+            int code, ms;
+            return CurlOnce("https://www.youtube.com/generate_204", new[] { "--http1.1" }, 204, 4000, out code, out ms);
+        }
+
+        // Порядок для авто-подбора: лучшие по результатам, затем остальные рабочие.
+        public static List<string> Ranked()
+        {
+            var list = new List<string>();
+            var res = LoadResults();
+            var ok = new List<KeyValuePair<string, int>>();
+            foreach (var kv in res)
+                if (kv.Value.Ok) ok.Add(new KeyValuePair<string, int>(kv.Key, kv.Value.Youtube.Ms + kv.Value.Discord.Ms));
+            ok.Sort(delegate(KeyValuePair<string, int> a, KeyValuePair<string, int> b) { return a.Value.CompareTo(b.Value); });
+            foreach (var kv in ok) list.Add(kv.Key);
+            foreach (Strategy s in Strategies())
+                if (!list.Contains(s.Id)) list.Add(s.Id);
+            return list;
+        }
+
+        // Включить лучшую из известных: сначала по результатам, иначе первую, которая проходит.
+        public static string StartBest()
+        {
+            foreach (string id in Ranked())
+            {
+                if (!File.Exists(Path.Combine(Root, id))) continue;
+                try { Start(id); } catch { continue; }
+                if (QuickOk()) { StateSet("strategy", id); return id; }
+                Stop();
+            }
+            throw new InvalidOperationException("ни одна стратегия не проходит проверку");
+        }
+
         public static Result Best(List<Result> results)
         {
             Result best = null;

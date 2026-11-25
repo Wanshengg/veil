@@ -145,7 +145,8 @@
       srvConnect() { snap.srvStatus = "Макет: SSH недоступен"; emit(); },
       srvInstall() {}, srvKeys() {}, srvIssue() {}, srvRevoke() {}, srvForget() {}, refreshSubs() {}, profileDel() {},
       poolAdd() {}, poolDel() {}, poolIssue() {}, clipWrite() {}, poolKeys() {}, poolRevoke() {}, poolIssueOne() {},
-      cascadeBuild() {}, zapInstall() {}, zapToggle() {}, zapCheck() {}, zapSelect() {}, zapAutoconnect() {}
+      cascadeBuild() {}, zapInstall() {}, zapToggle() {}, zapCheck() {}, zapSelect() {}, zapAutoconnect() {},
+      zapAutoStrategy() {}
     };
   })();
 
@@ -508,6 +509,9 @@
         <p class="msg">Обходит DPI на уровне пакетов: YouTube и Discord работают без туннеля.
           Нужны права администратора; при выходе из приложения запрет останавливается.</p>
         <div class="row"><span class="t">Версия</span><span class="v">${esc(z.version || "не установлена")}</span></div>
+        <div class="row"><span class="t">Подбирать стратегию сам</span>${switchBtn(!!z.autoStrategy, "zap-autostrategy", "Авто-подбор")}</div>
+        <p class="msg">Включает лучшую из проверенных. Дальше раз в минуту проверяет, что YouTube открывается:
+          если стратегия перестала работать — сам переключится на другую.</p>
         <div class="row"><span class="t">Автозапуск при старте</span>${switchBtn(!!z.autoconnect, "zap-autoconnect", "Автозапуск запрета")}</div>
         <div class="actions">
           <button class="btn filled" data-action="zap-install" ${z.busy ? "disabled" : ""}>${z.installed ? "Обновить набор" : "Установить"}</button>
@@ -828,6 +832,7 @@
     if (a === "zap-toggle") return adapter.zapToggle("");
     if (a === "zap-check") return adapter.zapCheck();
     if (a === "zap-autoconnect") return adapter.zapAutoconnect();
+    if (a === "zap-autostrategy") return adapter.zapAutoStrategy();
     if (a === "zap-select") return adapter.zapSelect(el.dataset.id || "");
     if (a === "myservers") {
       S.screen = "myservers";

@@ -1239,6 +1239,40 @@ namespace Veil
             zapList = Zapret.Strategies();
             zapResults = Zapret.LoadResults();
             Zapret.StopStale();
+
+            // Сторож запрета: пока он включён, раз в минуту проверяем, что YouTube
+            // реально открывается. Перестал — подбираем рабочую стратегию заново.
+            zapWatch = new System.Windows.Forms.Timer();
+            zapWatch.Interval = 60000;
+            zapWatch.Tick += delegate
+            {
+                if (zapBusy || !autoZap) return;
+                ThreadPool.QueueUserWorkItem(delegate {
+                    try
+                    {
+                        if (!Zapret.IsRunning)
+                        {
+                            zapStatus = "Запрет отвалился — поднимаю заново…"; PushSafe();
+                            string id = Zapret.StartBest();
+                            zapStatus = "Запрет включён · " + id;
+                            zapFails = 0;
+                            PushSafe();
+                            return;
+                        }
+                        if (Zapret.QuickOk()) { zapFails = 0; return; }
+                        zapFails++;
+                        if (zapFails < 2) return;
+                        zapFails = 0;
+                        zapStatus = "Стратегия перестала работать — подбираю другую…"; PushSafe();
+                        string best = Zapret.StartBest();
+                        zapStatus = "Переключился на " + best;
+                        Program.Log("zapret watchdog: переключение на " + best);
+                    }
+                    catch (Exception ex) { zapStatus = "Сторож: " + ex.Message; Program.Log("zapret watchdog: " + ex); }
+                    PushSafe();
+                });
+            };
+            zapWatch.Start();
             string zapElevate = Program.ArgOf(Environment.GetCommandLineArgs(), "--zap-elevate=");
             if (zapElevate.Length > 0)
             {
@@ -1487,6 +1521,16 @@ namespace Veil
                         else
                         {
                             string id = Json(raw, "id");
+                            if (string.IsNullOrEmpty(id) && Zapret.StateGet("autostrategy") != "0")
+                            {
+                                zapStatus = "Подбираю рабочую стратегию…"; PushSafe();
+                                id = Zapret.StartBest();
+                                Zapret.StateSet("strategy", id);
+                                autoZap = true;
+                                zapStatus = "Запрет включён · " + id;
+                                PushSafe();
+                                return;
+                            }
                             if (string.IsNullOrEmpty(id)) id = Zapret.SelectedStrategy;
                             if (string.IsNullOrEmpty(id) && zapList.Count > 0) id = zapList[0].Id;
                             if (string.IsNullOrEmpty(id)) throw new InvalidOperationException("нет стратегий — сначала установи");
@@ -1507,6 +1551,13 @@ namespace Veil
                     autoZap = Zapret.IsRunning;
                     PushSafe();
                 });
+            }
+            else if (cmd == "zap-autostrategy")
+            {
+                bool on = Zapret.StateGet("autostrategy") != "0";
+                Zapret.StateSet("autostrategy", on ? "0" : "1");
+                zapStatus = on ? "Авто-подбор выключен" : "Авто-подбор включён";
+                PushSafe();
             }
             else if (cmd == "zap-select")
             {
@@ -2134,6 +2185,8 @@ namespace Veil
         NotifyIcon tray;
         bool zapBusy = false;
         bool autoZap = false;
+        int zapFails = 0;
+        System.Windows.Forms.Timer zapWatch;
         string zapStatus = "", zapProgress = "";
         List<Zapret.Strategy> zapList = new List<Zapret.Strategy>();
         Dictionary<string, Zapret.Result> zapResults = new Dictionary<string, Zapret.Result>();
@@ -2297,6 +2350,7 @@ namespace Veil
             sb.Append(",\"running\":").Append(Zapret.IsRunning ? "true" : "false");
             sb.Append(",\"strategy\":\"").Append(Esc(Zapret.RunningStrategy.Length > 0 ? Zapret.RunningStrategy : Zapret.SelectedStrategy)).Append("\"");
             sb.Append(",\"autoconnect\":").Append(Zapret.Autoconnect ? "true" : "false");
+            sb.Append(",\"autoStrategy\":").Append(Zapret.StateGet("autostrategy") != "0" ? "true" : "false");
             sb.Append(",\"busy\":").Append(zapBusy ? "true" : "false");
             sb.Append(",\"status\":\"").Append(Esc(zapStatus)).Append("\"");
             sb.Append(",\"best\":\"").Append(Esc(bestId ?? "")).Append("\"");
