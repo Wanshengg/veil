@@ -502,6 +502,7 @@
 
   const viewZapret = (snap) => {
     const z = snap.zap || { strategies: [] };
+    const zapDisabled = !!z.blockedByTun || !!z.busy;
     const sel = z.strategy || "";
     return `
     <section class="screen compact">
@@ -510,6 +511,10 @@
       <div class="group">
         <div class="caps">Запрет · DPI</div>
         <div class="row"><span class="t">Включён</span>${switchBtn(!!z.running, "zap-toggle", "Запрет")}</div>
+        ${z.blockedByTun
+          ? `<p class="msg err">Туннель поднят в TUN-режиме — запрет выключен, чтобы они не мешали друг другу.
+               Отключи туннель или выключи TUN, и запрет включится сам.</p>`
+          : (z.pausedByTun ? `<p class="msg">Запрет снят на время TUN. После отключения туннеля вернётся сам.</p>` : "")}
         <p class="msg">Обходит DPI на уровне пакетов: YouTube и Discord работают без туннеля.
           Нужны права администратора; при выходе из приложения запрет останавливается.</p>
         <div class="row"><span class="t">Версия</span><span class="v">${esc(z.version || "не установлена")}${

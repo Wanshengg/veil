@@ -23,7 +23,7 @@ namespace Veil
 {
     static class Program
     {
-        public const string AppVersion = "0.6.8";   // сверяется с манифестом обновлений
+        public const string AppVersion = "0.6.9";   // сверяется с манифестом обновлений
         public const string ManifestUrl = "https://pool.example.com/static/veil.json";
         public static string RuntimeDir
         {
@@ -848,6 +848,8 @@ namespace Veil
 
     class Core
     {
+        public bool ZapPausedByTun = false;   // запрет снят, потому что поднят TUN
+
         public string Note = "";   // что показать вместо «рукопожатие»""".replace('"""','')
         public readonly List<Profile> Profiles = Store.Load();
         public string State = "disconnected";
@@ -885,6 +887,13 @@ namespace Veil
             try
             {
                 ApplyRuExit(p);
+                // TUN и winws встают друг другу на пути: при TUN запрет снимаем
+                if (Settings.Tun && Zapret.IsRunning)
+                {
+                    Zapret.Stop();
+                    ZapPausedByTun = true;
+                    Program.Log("zapret: остановлен — туннель поднимается в TUN-режиме");
+                }
                 Engine.WriteIni(p);
                 // Волны блокировок: одна неудачная попытка не значит «нет связи».
                 // Пробуем до 4 раз с паузой, каждый раз заново перебирая порты.
@@ -985,6 +994,20 @@ namespace Veil
             Proc = null;
             SysProxy.Disable();
             if (State == "connected" || State == "connecting") State = "disconnected";
+
+            // запрет снимали из-за TUN — возвращаем его, туннеля больше нет
+            if (ZapPausedByTun)
+            {
+                ZapPausedByTun = false;
+                ThreadPool.QueueUserWorkItem(delegate {
+                    try
+                    {
+                        string id = Zapret.StartBest();
+                        Program.Log("zapret: возвращён после TUN · " + id);
+                    }
+                    catch (Exception ex) { Program.Log("zapret: вернуть после TUN не удалось — " + ex.Message); }
+                });
+            }
         }
 
         // жёсткое убийство клиента не даёт ему убрать маршрут — чистим сами
@@ -1313,6 +1336,7 @@ namespace Veil
             zapWatch.Tick += delegate
             {
                 if (zapBusy || !autoZap) return;
+                if (Settings.Tun && (core.State == "connected" || core.State == "connecting")) return;   // TUN и запрет несовместимы
                 ThreadPool.QueueUserWorkItem(delegate {
                     try
                     {
@@ -1594,6 +1618,13 @@ namespace Veil
                         {
                             Zapret.Stop();
                             zapStatus = "Запрет выключен";
+                        }
+                        else if (Settings.Tun && (core.State == "connected" || core.State == "connecting"))
+                        {
+                            zapStatus = "Пока туннель в TUN-режиме, запрет не запускается: выключи TUN или отключись";
+                            autoZap = false;
+                            PushSafe();
+                            return;
                         }
                         else
                         {
@@ -2504,6 +2535,8 @@ namespace Veil
             sb.Append(",\"autoconnect\":").Append(Zapret.Autoconnect ? "true" : "false");
             sb.Append(",\"latest\":\"").Append(Esc(zapLatest)).Append("\"");
             sb.Append(",\"updateAvailable\":").Append(Zapret.IsNewer(zapLatest, Zapret.Version) ? "true" : "false");
+            sb.Append(",\"blockedByTun\":").Append(Settings.Tun && (core.State == "connected" || core.State == "connecting") ? "true" : "false");
+            sb.Append(",\"pausedByTun\":").Append(core.ZapPausedByTun ? "true" : "false");
             sb.Append(",\"autoStrategy\":").Append(Zapret.StateGet("autostrategy") != "0" ? "true" : "false");
             sb.Append(",\"busy\":").Append(zapBusy ? "true" : "false");
             sb.Append(",\"status\":\"").Append(Esc(zapStatus)).Append("\"");
