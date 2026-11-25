@@ -23,7 +23,7 @@ namespace Veil
 {
     static class Program
     {
-        public const string AppVersion = "0.6.6";   // сверяется с манифестом обновлений
+        public const string AppVersion = "0.6.7";   // сверяется с манифестом обновлений
         public const string ManifestUrl = "https://pool.example.com/static/veil.json";
         public static string RuntimeDir
         {
@@ -1249,8 +1249,10 @@ namespace Veil
                         string json = hc.GetStringAsync(Program.ManifestUrl).GetAwaiter().GetResult();
                         System.Text.RegularExpressions.Match mv = System.Text.RegularExpressions.Regex.Match(json, "\"version\"\\s*:\\s*\"([^\"]+)\"");
                         System.Text.RegularExpressions.Match mu = System.Text.RegularExpressions.Regex.Match(json, "\"url\"\\s*:\\s*\"([^\"]+)\"");
+                        System.Text.RegularExpressions.Match ms = System.Text.RegularExpressions.Regex.Match(json, "\"sha256\"\\s*:\\s*\"([a-fA-F0-9]{64})\"");
                         if (mv.Success) appLatest = mv.Groups[1].Value;
                         if (mu.Success) appUrl = mu.Groups[1].Value;
+                        if (ms.Success) appSha = ms.Groups[1].Value.ToLowerInvariant();
                         if (appLatest.Length > 0 && Zapret.IsNewer(appLatest, Program.AppVersion))
                         {
                             toastOk = true;
@@ -1615,6 +1617,60 @@ namespace Veil
                 Zapret.StateSet("strategy", id);
                 zapStatus = "Выбрана " + id;
                 PushSafe();
+            }
+            else if (cmd == "app-update")
+            {
+                if (appUpdating) return;
+                appUpdating = true;
+                string url = appUrl, sha = appSha;
+                if (url.Length == 0)
+                {
+                    url = "https://github.com/Wanshengg/veil/releases/latest/download/veil.exe";
+                }
+                Toast("Скачиваю обновление " + appLatest + "…", true);
+                ThreadPool.QueueUserWorkItem(delegate {
+                    try
+                    {
+                        string dir = Path.Combine(Engine.Dir, "update");
+                        Directory.CreateDirectory(dir);
+                        string fresh = Path.Combine(dir, "veil-new.exe");
+
+                        using (var hc = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromMinutes(5) })
+                        using (var s = hc.GetStreamAsync(url).GetAwaiter().GetResult())
+                        using (var f = File.Create(fresh)) s.CopyTo(f);
+
+                        string got;
+                        using (var h2 = System.Security.Cryptography.SHA256.Create())
+                        using (var fs = File.OpenRead(fresh))
+                            got = BitConverter.ToString(h2.ComputeHash(fs)).Replace("-", "").ToLowerInvariant();
+
+                        if (sha.Length == 64 && got != sha)
+                            throw new InvalidOperationException("SHA-256 скачанного файла не совпал");
+
+                        string self = System.Reflection.Assembly.GetExecutingAssembly().Location;
+                        string cmdFile = Path.Combine(dir, "apply.cmd");
+                        File.WriteAllText(cmdFile,
+                            "@echo off\r\n" +
+                            ":wait\r\n" +
+                            "tasklist /fi \"imagename eq veil.exe\" 2>nul | find /i \"veil.exe\" >nul && (timeout /t 1 /nobreak >nul & goto wait)\r\n" +
+                            "copy /y \"" + fresh + "\" \"" + self + "\" >nul\r\n" +
+                            "start \"\" \"" + self + "\"\r\n" +
+                            "del \"%~f0\"\r\n", new UTF8Encoding(false));
+
+                        Toast("Обновление готово — перезапускаюсь", true);
+                        Program.Log("app update: скачано, запускаю apply.cmd");
+                        Process.Start(new ProcessStartInfo("cmd.exe", "/c \"" + cmdFile + "\"") { CreateNoWindow = true, UseShellExecute = false });
+                        Thread.Sleep(400);
+                        Application.Exit();
+                    }
+                    catch (Exception ex)
+                    {
+                        Program.Log("app update: " + ex);
+                        Toast("Обновление не удалось: " + ex.Message, false);
+                        try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); } catch { }
+                    }
+                    finally { appUpdating = false; PushSafe(); }
+                });
             }
             else if (cmd == "open-url")
             {
@@ -2243,7 +2299,8 @@ namespace Veil
         bool autoZap = false;
         int zapFails = 0;
         string zapLatest = "";
-        string appLatest = "", appUrl = "";
+        string appLatest = "", appUrl = "", appSha = "";
+        bool appUpdating = false;
         System.Windows.Forms.Timer zapWatch;
         string zapStatus = "", zapProgress = "";
         List<Zapret.Strategy> zapList = new List<Zapret.Strategy>();
@@ -2252,6 +2309,12 @@ namespace Veil
         bool toastOk = true;
         string toastText = "";
         bool trayHintShown = false;
+
+        void Toast(string text, bool ok)
+        {
+            toastOk = ok; toastText = text; toastSeq++;
+            PushSafe();
+        }
 
         void HideToTray()
         {
@@ -2399,6 +2462,7 @@ namespace Veil
               .Append(",\"latest\":\"").Append(Esc(appLatest)).Append("\"")
               .Append(",\"url\":\"").Append(Esc(appUrl)).Append("\"")
               .Append(",\"updateAvailable\":").Append(appLatest.Length > 0 && Zapret.IsNewer(appLatest, Program.AppVersion) ? "true" : "false")
+              .Append(",\"updating\":").Append(appUpdating ? "true" : "false")
               .Append("}");
             sb.Append(",\"zap\":{");
             string bestId = null;
