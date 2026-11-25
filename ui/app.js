@@ -482,6 +482,19 @@
 
   /* ── запрет (DPI-bypass) ──────────────────────────────────────────────── */
 
+  const ordered = (list) => {
+    const rank = (s) => (s.ok === true ? 0 : (s.ok === undefined ? 1 : 2));
+    return [...list].sort((a, b) => {
+      const ra = rank(a), rb = rank(b);
+      if (ra !== rb) return ra - rb;
+      if (ra === 0) {
+        const sa = (a.ytMs || 0) + (a.dcMs || 0), sb = (b.ytMs || 0) + (b.dcMs || 0);
+        if (sa !== sb) return sa - sb;
+      }
+      return String(a.name).localeCompare(String(b.name), "ru", { numeric: true });
+    });
+  };
+
   const viewZapret = (snap) => {
     const z = snap.zap || { strategies: [] };
     const sel = z.strategy || "";
@@ -505,15 +518,21 @@
       <div class="group">
         <div class="caps">Стратегии${z.strategies.length ? " · " + z.strategies.length : ""}</div>
         ${z.strategies.length
-          ? z.strategies.map((s) => `
-            <div class="row clickable" data-action="zap-select" data-id="${esc(s.id)}">
-              <span class="t">${esc(s.name)}${s.id === sel ? " · выбрана" : ""}<br>
-                <span class="sub">${esc(s.id)}</span><br>
-                ${s.ok === undefined
-                  ? `<span class="sub">не проверялась</span>`
-                  : `<span class="sub">youtube ${esc(s.yt)} · discord ${esc(s.dc)}</span><br>
-                     <span class="sub">ICMP ${esc(s.icmp)} · ${esc(s.checks)} проверок · ${esc(s.desc)}</span>`}</span>
-              <span class="v">${s.id === sel ? "•" : ""}</span>
+          ? ordered(z.strategies).map((s) => `
+            <div class="zap-row clickable" data-action="zap-select" data-id="${esc(s.id)}">
+              <div class="zap-top">
+                <span class="zap-name">${esc(s.name)}${s.best ? ` <span class="zap-badge">Лучшая</span>` : ""}</span>
+                <span class="zap-state">${s.id === sel ? "выбрана" : (s.ok === true ? "работает" : (s.ok === false ? "не работает" : ""))}</span>
+              </div>
+              <div class="zap-id">${esc(s.id)}</div>
+              ${s.ok === undefined
+                ? `<div class="zap-metrics"><span class="m">не проверялась</span></div>`
+                : `<div class="zap-metrics">
+                     <span class="m"><i>YT</i> ${s.ytCode || "—"} · ${s.ytMs || "—"} мс · ${s.ytPass}/${s.ytTotal}</span>
+                     <span class="m"><i>DC</i> ${s.dcCode || "—"} · ${s.dcMs || "—"} мс · ${s.dcPass}/${s.dcTotal}</span>
+                     <span class="m">ICMP ${esc(s.icmp)}</span>
+                     <span class="m">проверок ${s.checksOk}/${s.checksTotal}</span>
+                   </div>`}
             </div>`).join("")
           : `<p class="msg">${z.installed ? "В наборе нет стратегий" : "Сначала установи набор"}</p>`}
         <div class="actions">

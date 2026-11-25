@@ -612,16 +612,23 @@ namespace Veil
                 foreach (string line in File.ReadAllLines(ResultsPath))
                 {
                     string[] f = line.Split('|');
-                    if (f.Length < 6) continue;
+                    if (f.Length < 13) continue;
                     var r = new Result { Id = f[0], Name = f[0], Ok = f[1] == "1" };
-                    r.Youtube = new ProbeInfo { Raw = f[2] };
-                    r.Discord = new ProbeInfo { Raw = f[3] };
-                    r.ChecksOk = 0; r.ChecksTotal = 0;
-                    int ok1, ok2;
-                    string[] ch = f[5].Split('/');
-                    if (ch.Length == 2 && int.TryParse(ch[0], out ok1) && int.TryParse(ch[1], out ok2)) { r.ChecksOk = ok1; r.ChecksTotal = ok2; }
-                    r.IcmpText = f[4];
-                    r.Error = f.Length > 6 ? f[6] : "";
+                    int v;
+                    r.Youtube = new ProbeInfo { Ok = true };
+                    if (int.TryParse(f[2], out v)) r.Youtube.Code = v;
+                    if (int.TryParse(f[3], out v)) r.Youtube.Ms = v;
+                    if (int.TryParse(f[4], out v)) r.Youtube.Passed = v;
+                    if (int.TryParse(f[5], out v)) r.Youtube.Total = v;
+                    r.Discord = new ProbeInfo { Ok = true };
+                    if (int.TryParse(f[6], out v)) r.Discord.Code = v;
+                    if (int.TryParse(f[7], out v)) r.Discord.Ms = v;
+                    if (int.TryParse(f[8], out v)) r.Discord.Passed = v;
+                    if (int.TryParse(f[9], out v)) r.Discord.Total = v;
+                    r.IcmpText = f[10];
+                    if (int.TryParse(f[11], out v)) r.ChecksOk = v;
+                    if (int.TryParse(f[12], out v)) r.ChecksTotal = v;
+                    r.Error = f.Length > 13 ? f[13] : "";
                     map[r.Id] = r;
                 }
             }
@@ -639,10 +646,12 @@ namespace Veil
                     Result r = kv.Value;
                     sb.Append(kv.Key.Replace("|", "/")).Append('|')
                       .Append(r.Ok ? "1" : "0").Append('|')
-                      .Append(r.Youtube.Desc.Replace("|", "/")).Append('|')
-                      .Append(r.Discord.Desc.Replace("|", "/")).Append('|')
+                      .Append(r.Youtube.Code).Append('|').Append(r.Youtube.Ms).Append('|')
+                      .Append(r.Youtube.Passed).Append('|').Append(r.Youtube.Total).Append('|')
+                      .Append(r.Discord.Code).Append('|').Append(r.Discord.Ms).Append('|')
+                      .Append(r.Discord.Passed).Append('|').Append(r.Discord.Total).Append('|')
                       .Append(r.IcmpText.Replace("|", "/")).Append('|')
-                      .Append(r.ChecksOk).Append('/').Append(r.ChecksTotal).Append('|')
+                      .Append(r.ChecksOk).Append('|').Append(r.ChecksTotal).Append('|')
                       .Append((r.Error ?? "").Replace("|", "/")).Append('\n');
                 }
                 File.WriteAllText(ResultsPath, sb.ToString(), new UTF8Encoding(false));

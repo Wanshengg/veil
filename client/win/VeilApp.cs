@@ -2285,6 +2285,13 @@ namespace Veil
               .Append(",\"theme\":\"").Append(Esc(Settings.Theme)).Append("\"}");
             sb.Append(",\"note\":\"").Append(Esc(core.Note)).Append("\"");
             sb.Append(",\"zap\":{");
+            string bestId = null;
+            {
+                int bestScore = int.MaxValue;
+                foreach (var kv in zapResults)
+                    if (kv.Value.Ok && (kv.Value.Youtube.Ms + kv.Value.Discord.Ms) < bestScore)
+                    { bestScore = kv.Value.Youtube.Ms + kv.Value.Discord.Ms; bestId = kv.Key; }
+            }
             sb.Append("\"installed\":").Append(Zapret.Installed ? "true" : "false");
             sb.Append(",\"version\":\"").Append(Esc(Zapret.Version)).Append("\"");
             sb.Append(",\"running\":").Append(Zapret.IsRunning ? "true" : "false");
@@ -2292,6 +2299,7 @@ namespace Veil
             sb.Append(",\"autoconnect\":").Append(Zapret.Autoconnect ? "true" : "false");
             sb.Append(",\"busy\":").Append(zapBusy ? "true" : "false");
             sb.Append(",\"status\":\"").Append(Esc(zapStatus)).Append("\"");
+            sb.Append(",\"best\":\"").Append(Esc(bestId ?? "")).Append("\"");
             sb.Append(",\"progress\":\"").Append(Esc(zapProgress)).Append("\"");
             sb.Append(",\"strategies\":[");
             for (int i = 0; i < zapList.Count; i++)
@@ -2308,6 +2316,15 @@ namespace Veil
                     sb.Append(",\"dc\":\"").Append(Esc(r.Discord.Desc)).Append("\"");
                     sb.Append(",\"icmp\":\"").Append(Esc(r.IcmpText)).Append("\"");
                     sb.Append(",\"checks\":\"").Append(r.ChecksOk).Append("/").Append(r.ChecksTotal).Append("\"");
+                    sb.Append(",\"ytCode\":").Append(r.Youtube.Code);
+                    sb.Append(",\"ytMs\":").Append(r.Youtube.Ms);
+                    sb.Append(",\"ytPass\":").Append(r.Youtube.Passed).Append(",\"ytTotal\":").Append(r.Youtube.Total);
+                    sb.Append(",\"dcCode\":").Append(r.Discord.Code);
+                    sb.Append(",\"dcMs\":").Append(r.Discord.Ms);
+                    sb.Append(",\"dcPass\":").Append(r.Discord.Passed).Append(",\"dcTotal\":").Append(r.Discord.Total);
+                    sb.Append(",\"checksOk\":").Append(r.ChecksOk).Append(",\"checksTotal\":").Append(r.ChecksTotal);
+                    sb.Append(",\"best\":").Append(bestId != null && bestId == zapList[i].Id ? "true" : "false");
+                    sb.Append(",\"score\":").Append(r.Ok ? (r.Youtube.Ms + r.Discord.Ms) : 99999);
                 }
                 sb.Append("}");
             }

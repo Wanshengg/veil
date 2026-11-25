@@ -428,3 +428,28 @@ html:not(.ready) *, html:not(.ready) *::before, html:not(.ready) *::after {
 @media (prefers-reduced-motion: reduce) {
   .toast { transition: none; }
 }
+
+/* ── стратегии запрета: две строки метрик, без карточек ────────────────── */
+
+.zap-row { padding: 14px 0; border-top: 1px solid var(--rule); cursor: pointer; }
+.zap-row:first-of-type { border-top: 0; }
+.zap-row:hover .zap-name { text-decoration: underline; text-decoration-color: var(--word-underline); text-underline-offset: 3px; }
+
+.zap-top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.zap-name { font-size: 15px; color: var(--ink); }
+.zap-state { font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--secondary); }
+
+.zap-badge {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--accent); border: 1px solid var(--outline); padding: 1px 6px; margin-left: 8px;
+}
+
+.zap-id { font-family: var(--mono); font-size: 11px; color: var(--secondary); margin-top: 3px; }
+
+.zap-metrics {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 2px 16px; margin-top: 8px;
+  font-family: var(--mono); font-size: 12px; color: var(--secondary);
+}
+.zap-metrics .m { white-space: nowrap; }
+.zap-metrics .m i { font-style: normal; color: var(--ink); margin-right: 4px; }
