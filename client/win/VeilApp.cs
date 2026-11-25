@@ -23,7 +23,7 @@ namespace Veil
 {
     static class Program
     {
-        public const string AppVersion = "0.6.7";   // сверяется с манифестом обновлений
+        public const string AppVersion = "0.6.8";   // сверяется с манифестом обновлений
         public const string ManifestUrl = "https://pool.example.com/static/veil.json";
         public static string RuntimeDir
         {
@@ -660,10 +660,35 @@ namespace Veil
             }
             using (Stream s = asm.GetManifestResourceStream(name))
             {
-                if (File.Exists(dst) && new FileInfo(dst).Length == s.Length) return;
-                if (File.Exists(dst)) File.Delete(dst);
-                using (FileStream f = File.Create(dst)) s.CopyTo(f);
+                // Сравниваем содержимое, а не длину: два разных билда легко
+                // совпадают по размеру, и тогда на диске оставался старый клиент.
+                var buf = new byte[s.Length];
+                int read = 0;
+                while (read < buf.Length)
+                {
+                    int n = s.Read(buf, read, buf.Length - read);
+                    if (n <= 0) break;
+                    read += n;
+                }
+                if (File.Exists(dst))
+                {
+                    try
+                    {
+                        byte[] cur = File.ReadAllBytes(dst);
+                        if (cur.Length == read && SameBytes(cur, buf)) return;
+                    }
+                    catch { }
+                    try { File.Delete(dst); } catch { }
+                }
+                File.WriteAllBytes(dst, buf);
             }
+        }
+
+        static bool SameBytes(byte[] a, byte[] b)
+        {
+            if (a.Length != b.Length) return false;
+            for (int i = 0; i < a.Length; i++) if (a[i] != b[i]) return false;
+            return true;
         }
 
         // Российский выход: берём сервер из подписки с кодом страны RU.

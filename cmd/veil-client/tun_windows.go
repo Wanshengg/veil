@@ -117,6 +117,12 @@ func configureAdapter(c *cfg) error {
 	// а сами запросы шли напрямую (77.88.8.8 есть в geoip-списке)
 	_ = run("netsh", "interface", "ipv4", "set", "dnsservers",
 		"name="+tunName, "source=static", "address=77.88.8.8", "register=primary")
+	// Второй резолвер не ставим: 1.1.1.1 отвечает и на российские домены
+	// зарубежными адресами, и тогда РУ-сайты уходят в туннель и не открываются.
+	// IPv6 на нашем адаптере выключаем: tun2socks тянет только IPv4, иначе
+	// браузер выбирает AAAA-адрес и запрос молча умирает
+	_ = run("powershell", "-NoProfile", "-Command",
+		"Disable-NetAdapterBinding -Name '"+tunName+"' -ComponentID ms_tcpip6 -ErrorAction SilentlyContinue")
 
 	// исключение для самого сервера: иначе туннель уйдёт в петлю
 	host, _, err := net.SplitHostPort(c.server)
@@ -186,11 +192,21 @@ func tunGuard(c *cfg) {
 }
 
 // routeOwned — реально ли наш маршрут выигрывает по метрике.
+// Смотрим на интерфейс, а не на NextHop: у маршрута через wintun следующий
+// хоп может быть 0.0.0.0 или адресом шлюза, и проверка по NextHop ошибочно
+// решала, что маршрут чужой, и выключала TUN.
 func routeOwned() bool {
+	// Эффективная метрика = метрика интерфейса + метрика маршрута.
+	// Сортировать только по RouteMetric нельзя: у Wi-Fi маршрут 0, у нас 1,
+	// и тогда «победителем» ошибочно оказывался физический адаптер.
 	out := output("powershell", "-NoProfile", "-Command",
-		"(Get-NetRoute -DestinationPrefix '0.0.0.0/0' | Sort-Object RouteMetric | "+
-			"Select-Object -First 1).NextHop")
-	return strings.TrimSpace(out) == "198.18.0.1"
+		"Get-NetRoute -DestinationPrefix '0.0.0.0/0' | ForEach-Object { $r=$_; "+
+			"$i=(Get-NetIPInterface -InterfaceIndex $r.ifIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue).InterfaceMetric; "+
+			"if ($null -eq $i) { $i = 0 }; [pscustomobject]@{ A=$r.InterfaceAlias; E=($i + $r.RouteMetric) } } | "+
+			"Sort-Object E | Select-Object -First 1 -ExpandProperty A")
+	best := strings.TrimSpace(out)
+	log.Printf("tun: проверка маршрута, первым идёт %q", best)
+	return best == tunName
 }
 
 // tunReachable — сквозная проверка: соединение уходит в адаптер, tun2socks
