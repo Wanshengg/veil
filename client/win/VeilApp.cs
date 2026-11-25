@@ -1239,6 +1239,20 @@ namespace Veil
             zapList = Zapret.Strategies();
             zapResults = Zapret.LoadResults();
             Zapret.StopStale();
+            ThreadPool.QueueUserWorkItem(delegate {
+                try
+                {
+                    if (!Zapret.Installed) return;
+                    Zapret.Release rel = Zapret.Latest();
+                    zapLatest = rel.Version;
+                    if (Zapret.IsNewer(rel.Version, Zapret.Version))
+                        Program.Log("zapret: доступна версия " + rel.Version + " (стоит " + Zapret.Version + ")");
+                    else
+                        Program.Log("zapret: версия " + Zapret.Version + " — последняя");
+                    PushSafe();
+                }
+                catch (Exception ex) { Program.Log("zapret version check: " + ex.Message); }
+            });
 
             // Сторож запрета: пока он включён, раз в минуту проверяем, что YouTube
             // реально открывается. Перестал — подбираем рабочую стратегию заново.
@@ -1490,9 +1504,20 @@ namespace Veil
             {
                 if (zapBusy) return;
                 zapBusy = true; zapStatus = "Проверяю релиз…"; PushSafe();
+                bool force = (Json(raw, "force") ?? "") == "true";
                 ThreadPool.QueueUserWorkItem(delegate {
                     try
                     {
+                        zapStatus = "Проверяю версию…"; PushSafe();
+                        Zapret.Release rel = Zapret.Latest();
+                        zapLatest = rel.Version;
+                        if (Zapret.Installed && !force && !Zapret.IsNewer(rel.Version, Zapret.Version))
+                        {
+                            zapStatus = "Уже последняя версия " + Zapret.Version + " — набор не трогаю";
+                            zapBusy = false;
+                            PushSafe();
+                            return;
+                        }
                         string v = Zapret.Install(delegate(string what) { zapStatus = what; PushSafe(); });
                         zapStatus = "Установлено " + v;
                         zapList = Zapret.Strategies();
@@ -2186,6 +2211,7 @@ namespace Veil
         bool zapBusy = false;
         bool autoZap = false;
         int zapFails = 0;
+        string zapLatest = "";
         System.Windows.Forms.Timer zapWatch;
         string zapStatus = "", zapProgress = "";
         List<Zapret.Strategy> zapList = new List<Zapret.Strategy>();
@@ -2350,6 +2376,8 @@ namespace Veil
             sb.Append(",\"running\":").Append(Zapret.IsRunning ? "true" : "false");
             sb.Append(",\"strategy\":\"").Append(Esc(Zapret.RunningStrategy.Length > 0 ? Zapret.RunningStrategy : Zapret.SelectedStrategy)).Append("\"");
             sb.Append(",\"autoconnect\":").Append(Zapret.Autoconnect ? "true" : "false");
+            sb.Append(",\"latest\":\"").Append(Esc(zapLatest)).Append("\"");
+            sb.Append(",\"updateAvailable\":").Append(Zapret.IsNewer(zapLatest, Zapret.Version) ? "true" : "false");
             sb.Append(",\"autoStrategy\":").Append(Zapret.StateGet("autostrategy") != "0" ? "true" : "false");
             sb.Append(",\"busy\":").Append(zapBusy ? "true" : "false");
             sb.Append(",\"status\":\"").Append(Esc(zapStatus)).Append("\"");

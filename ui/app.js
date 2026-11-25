@@ -508,14 +508,21 @@
         <div class="row"><span class="t">Включён</span>${switchBtn(!!z.running, "zap-toggle", "Запрет")}</div>
         <p class="msg">Обходит DPI на уровне пакетов: YouTube и Discord работают без туннеля.
           Нужны права администратора; при выходе из приложения запрет останавливается.</p>
-        <div class="row"><span class="t">Версия</span><span class="v">${esc(z.version || "не установлена")}</span></div>
+        <div class="row"><span class="t">Версия</span><span class="v">${esc(z.version || "не установлена")}${
+          z.version && z.latest
+            ? (z.updateAvailable ? " · есть " + esc(z.latest) : " · последняя")
+            : ""}</span></div>
         <div class="row"><span class="t">Подбирать стратегию сам</span>${switchBtn(!!z.autoStrategy, "zap-autostrategy", "Авто-подбор")}</div>
         <p class="msg">Включает лучшую из проверенных. Дальше раз в минуту проверяет, что YouTube открывается:
           если стратегия перестала работать — сам переключится на другую.</p>
         <div class="row"><span class="t">Автозапуск при старте</span>${switchBtn(!!z.autoconnect, "zap-autoconnect", "Автозапуск запрета")}</div>
         <div class="actions">
-          <button class="btn filled" data-action="zap-install" ${z.busy ? "disabled" : ""}>${z.installed ? "Обновить набор" : "Установить"}</button>
+          <button class="btn filled" data-action="zap-install" ${z.busy ? "disabled" : ""}>${
+            !z.installed ? "Установить" : (z.updateAvailable ? "Обновить до " + esc(z.latest) : "Проверить обновление")}</button>
         </div>
+        ${z.installed ? `<div class="actions">
+          <button class="btn outline" data-action="zap-reinstall" ${z.busy ? "disabled" : ""}>Переустановить набор</button>
+        </div>` : ""}
         ${z.status ? `<p class="msg">${esc(z.status)}</p>` : ""}
       </div>
 
@@ -828,7 +835,8 @@
     if (a === "srv-forget") return adapter.srvForget();
     if (a === "pool-publisher") { S.poolPublisher = !S.poolPublisher; S.lastKey = ""; return render(); }
     if (a === "zapret") { S.screen = "zapret"; return render(); }
-    if (a === "zap-install") return adapter.zapInstall();
+    if (a === "zap-install") return adapter.zapInstall(false);
+    if (a === "zap-reinstall") return adapter.zapInstall(true);
     if (a === "zap-toggle") return adapter.zapToggle("");
     if (a === "zap-check") return adapter.zapCheck();
     if (a === "zap-autoconnect") return adapter.zapAutoconnect();

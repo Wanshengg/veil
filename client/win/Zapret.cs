@@ -135,6 +135,23 @@ namespace Veil
             }
         }
 
+        // Сравнение версий вида "v1.10.4" / "1.10.4".
+        public static bool IsNewer(string latest, string current)
+        {
+            if (string.IsNullOrEmpty(latest)) return false;
+            if (string.IsNullOrEmpty(current)) return true;
+            string[] a = latest.TrimStart('v', 'V').Split('.');
+            string[] b = current.TrimStart('v', 'V').Split('.');
+            for (int i = 0; i < Math.Max(a.Length, b.Length); i++)
+            {
+                int x = 0, y = 0;
+                if (i < a.Length) int.TryParse(Regex.Replace(a[i], "[^0-9].*$", ""), out x);
+                if (i < b.Length) int.TryParse(Regex.Replace(b[i], "[^0-9].*$", ""), out y);
+                if (x != y) return x > y;
+            }
+            return false;
+        }
+
         public static string Install(Action<string> progress)
         {
             Release rel = Latest();
