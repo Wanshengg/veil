@@ -34,7 +34,23 @@ namespace Veil
             {
                 if (manifestCache != null) return manifestCache;
                 string sub = "";
-                try { Store.Load().ForEach(delegate(Profile p) { if (sub.Length == 0 && p.Sub.Length > 0) sub = p.Sub; }); } catch { }
+                try
+                {
+                    // адрес раздатчика лежит внутри ключа подписки: v2|sub=<url>|…
+                    Store.Load().ForEach(delegate(Profile p) {
+                        if (sub.Length > 0 || !p.Key.StartsWith("veil://")) return;
+                        string b = p.Key.Substring(7).Replace("-", "+").Replace("_", "/");
+                        b += new string('=', (4 - b.Length % 4) % 4);
+                        try
+                        {
+                            string txt = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(b));
+                            var mm = System.Text.RegularExpressions.Regex.Match(txt, "sub=([^|]+)");
+                            if (mm.Success) sub = mm.Groups[1].Value;
+                        }
+                        catch { }
+                    });
+                }
+                catch { }
                 if (sub.Length == 0) { manifestCache = "https://pool.example.com/static/veil.json"; return manifestCache; }
                 try
                 {
@@ -1336,6 +1352,7 @@ namespace Veil
                 {
                     using (var hc = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(12) })
                     {
+                        Program.Log("app update: манифест " + Program.ManifestUrl);
                         string json = hc.GetStringAsync(Program.ManifestUrl).GetAwaiter().GetResult();
                         System.Text.RegularExpressions.Match mv = System.Text.RegularExpressions.Regex.Match(json, "\"version\"\\s*:\\s*\"([^\"]+)\"");
                         System.Text.RegularExpressions.Match mu = System.Text.RegularExpressions.Regex.Match(json, "\"url\"\\s*:\\s*\"([^\"]+)\"");
